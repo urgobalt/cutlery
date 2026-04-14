@@ -6,7 +6,7 @@
   ...
 }: {
   packages = with pkgs; [
-    clang
+    gcc
     clang-tools
     just
   ];
