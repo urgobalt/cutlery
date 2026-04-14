@@ -1,4 +1,4 @@
-build_dir := "build"
+build_dir := "output"
 
 test:
   mkdir -p {{build_dir}}/

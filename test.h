@@ -11,9 +11,15 @@ typedef struct test_context {
   uintmax_t capacity;
 } test_context;
 
+typedef enum test_result_condition {
+  TEST_SUCCESS = 0,
+  TEST_FAILED = 1,
+  TEST_SKIPPED = 2,
+} test_result_condition;
+
 // Supervisor
 test_context test_init(void);
-int32_t test_run(test_context *context);
+test_result_condition *test_run(test_context *context);
 
 void test_register(test_context *context, void (*test)(test_context *context));
 void fail_test_register(test_context *context, void (*test)(test_context *context));
@@ -33,7 +39,14 @@ test_context test_init(void) {
   };
   return context;
 }
-int32_t test_run(test_context *context) { }
+
+test_result_condition *test_run(test_context *context) {
+  test_result_condition *results = malloc(context->count * sizeof(test_result_condition));
+
+  // TODO: run tests and register the results into the results variable
+
+  return results;
+}
 
 void test_register(test_context *context, void (*test)(test_context *context)) {}
 void fail_test_register(test_context *context, void (*test)(test_context *context)) {}
