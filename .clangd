@@ -1,0 +1,18 @@
+# TODO: Fix the <stdlib.h> not found on Nix/NixOS
+CompileFlags:
+  Add: [
+    -xc,
+    -std=c99,
+    -Wall,
+    -Wextra,
+    -Wno-macro-redefined,
+    -pedantic-errors,
+    -DTEST_IMPLEMENTATION,
+  ]
+  Remove: [-x, objective-c++, -stdlib=libc++]
+
+  BuiltinHeaders: QueryDriver
+  Compiler: clang
+  CompilationDatabase: .
+Index:
+  StandardLibrary: Yes
