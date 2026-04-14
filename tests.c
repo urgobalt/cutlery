@@ -1,8 +1,8 @@
 #define TEST_IMPLEMENTATION
 #include "test.h"
 
-void test1(test_context *context) {
-
+void test1(void) {
+  assert(false);
 }
 
 int main(void) {
@@ -10,5 +10,7 @@ int main(void) {
 
   test_register(&context, &test1);
 
-  test_run(&context);
+  free(test_run(&context));
+
+  free(context.tests);
 }
