@@ -2,7 +2,7 @@
 #include "test.h"
 
 void test1(void) {
-  printf("This should not be shown");
+  printf("This should not be shown\n");
 }
 
 int main(void) {

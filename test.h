@@ -3,15 +3,17 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <errno.h>
 #include <execinfo.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
-#include <sys/types.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 typedef struct test_context {
   void (**tests)(void);
@@ -50,6 +52,8 @@ test_context test_init(void) {
   return context;
 }
 
+void __test_print_output(int fd);
+
 test_result_condition *test_run(test_context *context) {
   test_result_condition *results = malloc(context->count * sizeof(test_result_condition));
   int *stdouts = malloc(context->count * sizeof(int));
@@ -57,14 +61,17 @@ test_result_condition *test_run(test_context *context) {
 
   // TODO: run tests and register the results into the results variable'
   for (size_t i = 0; i < context->count; i += 1) {
-    char templ[] = "/tmp/testoutputXXXXXX";
+    int res = mkdir("/tmp/cutlerytest", 0777);
+    assert(res == 0 || errno == EEXIST);
+
+    char templ[] = "/tmp/cutlerytest/testoutputXXXXXX";
     int stdout_fd = mkstemp(templ);
-    int stderr_fd = mkstemp(templ);
+
+    char templ_err[] = "/tmp/cutlerytest/testerrXXXXXX";
+    int stderr_fd = mkstemp(templ_err);
 
     assert(stdout_fd >= 0);
     assert(stderr_fd >= 0);
-
-    printf("%i\n", stdout_fd);
 
     stdouts[i] = stdout_fd;
     stderrs[i] = stderr_fd;
@@ -88,7 +95,29 @@ test_result_condition *test_run(test_context *context) {
     }
   }
 
+  for (size_t i = 0; i < context->count; i += 1) {
+    printf("[stdout of test]\n");
+    __test_print_output(stdouts[i]);
+    printf("[stderr of test]\n");
+    __test_print_output(stderrs[i]);
+  }
+
+  rmdir("/tmp/cutlerytest");
+
   return results;
+}
+
+void __test_print_output(int fd) {
+  lseek(fd, 0, SEEK_SET);
+
+  const size_t buffer_size = 128;
+  char buffer[buffer_size];
+
+  while(read(fd, buffer, buffer_size) != 0) {
+    printf("%s", buffer);
+  }
+
+  printf("\n");
 }
 
 void test_register(test_context *context, void (*test)(void)) {
