@@ -2,7 +2,7 @@
 #include "test.h"
 
 void test1(void) {
-  assert(false);
+  printf("This should not be shown");
 }
 
 int main(void) {
@@ -10,7 +10,5 @@ int main(void) {
 
   test_register(&context, &test1);
 
-  free(test_run(&context));
-
-  free(context.tests);
+  test_run(&context);
 }

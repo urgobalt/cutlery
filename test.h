@@ -1,10 +1,12 @@
 #ifndef TEST_H
 #define TEST_H
 
+#define _POSIX_C_SOURCE 200809L
+
+#include <execinfo.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -50,19 +52,39 @@ test_context test_init(void) {
 
 test_result_condition *test_run(test_context *context) {
   test_result_condition *results = malloc(context->count * sizeof(test_result_condition));
+  int *stdouts = malloc(context->count * sizeof(int));
+  int *stderrs = malloc(context->count * sizeof(int));
 
   // TODO: run tests and register the results into the results variable'
   for (size_t i = 0; i < context->count; i += 1) {
-    pid_t p = fork();
-    if (p < 0) {
-      results[i] = TEST_SUPERVISOR_ERROR;
-      continue;
-    } else if (p == 0) {
+    char templ[] = "/tmp/testoutputXXXXXX";
+    int stdout_fd = mkstemp(templ);
+    int stderr_fd = mkstemp(templ);
+
+    assert(stdout_fd >= 0);
+    assert(stderr_fd >= 0);
+
+    printf("%i\n", stdout_fd);
+
+    stdouts[i] = stdout_fd;
+    stderrs[i] = stderr_fd;
+
+    pid_t test_pid = fork();
+    assert(test_pid >= 0);
+    if (test_pid == 0) {
+      dup2(stdout_fd, STDOUT_FILENO);
+      dup2(stderr_fd, STDERR_FILENO);
+
       context->tests[i]();
+      exit(0);
     } else {
       int status;
-      pid_t rp = waitpid(p, &status, WUNTRACED);
-      printf("%i\n", status);
+      (void)waitpid(test_pid, &status, WUNTRACED);
+      if (status == 0) {
+        results[i] = TEST_SUCCESS;
+      } else {
+        results[i] = TEST_FAILED;
+      }
     }
   }
 
