@@ -3,12 +3,13 @@
 
 void test1(void) {
   printf("This should not be shown\n");
+  assert(false);
 }
 
 int main(void) {
   test_context context = test_init();
 
-  test_register(&context, &test1);
+  test_register(&context, "test1", &test1);
 
   test_run(&context);
 }

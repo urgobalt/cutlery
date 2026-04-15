@@ -17,6 +17,7 @@
 
 typedef struct test_context {
   void (**tests)(void);
+  char **test_names;
   size_t count;
   size_t capacity;
 } test_context;
@@ -32,7 +33,7 @@ typedef enum test_result_condition {
 test_context test_init(void);
 test_result_condition *test_run(test_context *context);
 
-void test_register(test_context *context, void (*test)(void));
+void test_register(test_context *context, char* name, void (*test)(void));
 void fail_test_register(test_context *context, void (*test)(void));
 
 // Utility functions
@@ -44,8 +45,11 @@ test_context test_init(void) {
   const size_t initial_capacity = 32;
   void (**tests)(void) = malloc(initial_capacity * sizeof(void*));
   assert(tests != NULL);
+  char **test_names = malloc(initial_capacity * sizeof(char*));
+  assert(test_names != NULL);
   test_context context = {
     .tests = tests,
+    .test_names = test_names,
     .count = 0,
     .capacity = initial_capacity,
   };
@@ -59,10 +63,16 @@ test_result_condition *test_run(test_context *context) {
   int *stdouts = malloc(context->count * sizeof(int));
   int *stderrs = malloc(context->count * sizeof(int));
 
-  // TODO: run tests and register the results into the results variable'
+  int res = mkdir("/tmp/cutlerytest", 0777);
+  assert(res == 0 || errno == EEXIST);
+
+  size_t success_count = 0;
+
   for (size_t i = 0; i < context->count; i += 1) {
-    int res = mkdir("/tmp/cutlerytest", 0777);
-    assert(res == 0 || errno == EEXIST);
+    printf("%s => ", context->test_names[i]);
+    fflush(stdout);
+
+    // TODO: Implement skip functionality
 
     char templ[] = "/tmp/cutlerytest/testoutputXXXXXX";
     int stdout_fd = mkstemp(templ);
@@ -89,20 +99,33 @@ test_result_condition *test_run(test_context *context) {
       (void)waitpid(test_pid, &status, WUNTRACED);
       if (status == 0) {
         results[i] = TEST_SUCCESS;
+        success_count += 1;
+        printf("DONE\n");
       } else {
         results[i] = TEST_FAILED;
+        printf("FAIL\n");
       }
+      fflush(stdout);
     }
   }
 
+  // TODO: List skipped tests
+  printf("\n===\n"
+          "%zu tests completed\n"
+          "%zu tests successful\n"
+          "%zu tests failed\n===\n\n",
+        context->count,
+        success_count,
+        context->count - success_count);
+
   for (size_t i = 0; i < context->count; i += 1) {
-    printf("[stdout of test]\n");
+    if (results[i] != TEST_FAILED) continue;
+    printf("Output from %s:\n", context->test_names[i]);
+    printf("[stdout]\n");
     __test_print_output(stdouts[i]);
-    printf("[stderr of test]\n");
+    printf("[stderr]\n");
     __test_print_output(stderrs[i]);
   }
-
-  rmdir("/tmp/cutlerytest");
 
   return results;
 }
@@ -120,16 +143,19 @@ void __test_print_output(int fd) {
   printf("\n");
 }
 
-void test_register(test_context *context, void (*test)(void)) {
+void test_register(test_context *context, char* name, void (*test)(void)) {
   if (context->count >= context->capacity) {
     size_t new_capacity = context->capacity*2;
-    void (**tests)(void) = realloc(context->tests, new_capacity);
+    void (**tests)(void) = realloc(context->tests, new_capacity * sizeof(test));
     assert(tests != NULL);
+    char **test_names = realloc(context->tests, new_capacity * sizeof(char*));
+    assert(test_names != NULL);
     context->tests = tests;
     context->capacity = new_capacity;
   }
 
   context->tests[context->count] = test;
+  context->test_names[context->count] = name;
   context->count += 1;
 }
 
