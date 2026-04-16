@@ -100,27 +100,29 @@ test_result_condition *test_run(test_context *context) {
       if (status == 0) {
         results[i] = TEST_SUCCESS;
         success_count += 1;
-        printf("DONE\n");
+        printf("\x1b[1;32mPASS\x1b[0m\n");
       } else {
         results[i] = TEST_FAILED;
-        printf("FAIL\n");
+        printf("\x1b[1;31mFAIL\x1b[0m\n");
       }
       fflush(stdout);
     }
   }
 
   // TODO: List skipped tests
-  printf("\n===\n"
-          "%zu tests completed\n"
-          "%zu tests successful\n"
-          "%zu tests failed\n===\n\n",
+  printf("\n"
+          "=============\n"
+          "Completed  = %zu\n"
+          "Passed     = %zu\n"
+          "Failed     = %zu\n"
+          "=============\n\n",
         context->count,
         success_count,
         context->count - success_count);
 
   for (size_t i = 0; i < context->count; i += 1) {
     if (results[i] != TEST_FAILED) continue;
-    printf("Output from %s:\n", context->test_names[i]);
+    printf("Output from test '%s':\n", context->test_names[i]);
     printf("[stdout]\n");
     __test_print_output(stdouts[i]);
     printf("[stderr]\n");
