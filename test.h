@@ -39,6 +39,8 @@ void fail_test_register(test_context *context, void (*test)(void));
 // Utility functions
 void test_assert(bool condition, char *message);
 
+#endif // TEST_H
+
 #ifdef TEST_IMPLEMENTATION
 
 test_context test_init(void) {
@@ -167,4 +169,3 @@ void fail_test_register(test_context *context, void (*test)(void)) {
 }
 
 #endif // TEST_IMPLEMENTATION
-#endif // TEST_H
