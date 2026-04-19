@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 80
+AllowShortFunctionsOnASingleLine: None
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveAssignments: Consecutive
+AlignAfterOpenBracket: Align
+ReflowComments: true
