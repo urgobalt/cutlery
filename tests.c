@@ -16,6 +16,8 @@ void passing(void) {
 int main(void) {
   flags_container flags = flags_init();
 
+  int8_t* my_feature = flags_i8(&flags, "number", 'n', 0, "Add number to program");
+
   int err;
   if ((err = flags_parse(&flags, NULL)) != 0) {
     printf("Flag parse error: %s", flags_fprint_err(err));
