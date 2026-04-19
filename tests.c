@@ -13,8 +13,8 @@ void passing(void) {
 int main(void) {
   test_context context = test_init();
 
-  test_register(&context, "failing", &failing);
-  test_register(&context, "passing", &passing);
+  test_register(&context, "failing", &failing, true);
+  test_register(&context, "passing", &passing, false);
 
   test_run(&context);
 }

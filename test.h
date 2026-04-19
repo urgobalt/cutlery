@@ -18,6 +18,7 @@
 typedef struct test_context {
   void (**tests)(void);
   char **test_names;
+  bool *should_fail;
   size_t count;
   size_t capacity;
 } test_context;
@@ -33,7 +34,7 @@ typedef enum test_result_condition {
 test_context test_init(void);
 test_result_condition *test_run(test_context *context);
 
-void test_register(test_context *context, char* name, void (*test)(void));
+void test_register(test_context *context, char* name, void (*test)(void), bool should_fail);
 void fail_test_register(test_context *context, void (*test)(void));
 
 // Utility functions
@@ -45,16 +46,17 @@ void test_assert(bool condition, char *message);
 
 test_context test_init(void) {
   const size_t initial_capacity = 32;
-  void (**tests)(void) = malloc(initial_capacity * sizeof(void*));
-  assert(tests != NULL);
-  char **test_names = malloc(initial_capacity * sizeof(char*));
-  assert(test_names != NULL);
+
   test_context context = {
-    .tests = tests,
-    .test_names = test_names,
-    .count = 0,
-    .capacity = initial_capacity,
+    .tests       = malloc(initial_capacity * sizeof(void*)),
+    .test_names  = malloc(initial_capacity * sizeof(char*)),
+    .should_fail = malloc(initial_capacity * sizeof(bool)),
+    .count       = 0,
+    .capacity    = initial_capacity,
   };
+  assert(context.tests       != NULL);
+  assert(context.test_names  != NULL);
+  assert(context.should_fail != NULL);
   return context;
 }
 
@@ -99,7 +101,8 @@ test_result_condition *test_run(test_context *context) {
     } else {
       int status;
       (void)waitpid(test_pid, &status, WUNTRACED);
-      if (status == 0) {
+      bool has_failed = status != 0;
+      if (has_failed == context->should_fail[i]) {
         results[i] = TEST_SUCCESS;
         success_count += 1;
         printf("\x1b[1;32mPASS\x1b[0m\n");
@@ -147,25 +150,21 @@ void __test_print_output(int fd) {
   printf("\n");
 }
 
-void test_register(test_context *context, char* name, void (*test)(void)) {
+void test_register(test_context *context, char* name, void (*test)(void), bool should_fail) {
   if (context->count >= context->capacity) {
-    size_t new_capacity = context->capacity*2;
-    void (**tests)(void) = realloc(context->tests, new_capacity * sizeof(test));
-    assert(tests != NULL);
-    char **test_names = realloc(context->tests, new_capacity * sizeof(char*));
-    assert(test_names != NULL);
-    context->tests = tests;
-    context->capacity = new_capacity;
+    context->capacity = context->capacity*2;
+    context->tests = realloc(context->tests, context->capacity * sizeof(test));
+    context->test_names = realloc(context->test_names, context->capacity * sizeof(name));
+    context->should_fail = realloc(context->should_fail, context->capacity * sizeof(should_fail));
+
+    assert(context->tests != NULL);
+    assert(context->test_names != NULL);
   }
 
   context->tests[context->count] = test;
   context->test_names[context->count] = name;
+  context->should_fail[context->count] = should_fail;
   context->count += 1;
-}
-
-// TODO: implement tests that is expected to fail
-void fail_test_register(test_context *context, void (*test)(void)) {
-  assert(false && "NOT YET IMPLEMENTED");
 }
 
 #endif // TEST_IMPLEMENTATION
