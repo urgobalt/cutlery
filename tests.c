@@ -17,4 +17,6 @@ int main(void) {
   test_register(&context, "passing", &passing, false);
 
   test_run(&context);
+
+  test_deinit(&context);
 }

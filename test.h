@@ -15,14 +15,6 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
-typedef struct test_context {
-  void (**tests)(void);
-  char **test_names;
-  bool *should_fail;
-  size_t count;
-  size_t capacity;
-} test_context;
-
 typedef enum test_result_condition {
   TEST_SUCCESS = 0,
   TEST_FAILED = 1,
@@ -30,9 +22,19 @@ typedef enum test_result_condition {
   TEST_SUPERVISOR_ERROR = 99,
 } test_result_condition;
 
+typedef struct test_context {
+  void (**tests)(void);
+  char** test_names;
+  bool* should_fail;
+  test_result_condition* results;
+  size_t count;
+  size_t capacity;
+} test_context;
+
 // Supervisor
 test_context test_init(void);
-test_result_condition *test_run(test_context *context);
+void test_deinit(test_context* context);
+void test_run(test_context *context);
 
 void test_register(test_context *context, char* name, void (*test)(void), bool should_fail);
 void fail_test_register(test_context *context, void (*test)(void));
@@ -60,10 +62,20 @@ test_context test_init(void) {
   return context;
 }
 
+void test_deinit(test_context* context) {
+  free(context->tests);
+  free(context->test_names);
+  free(context->should_fail);
+  if (context->results != NULL)
+    free(context->results);
+}
+
 void __test_print_output(int fd);
 
-test_result_condition *test_run(test_context *context) {
-  test_result_condition *results = malloc(context->count * sizeof(test_result_condition));
+void test_run(test_context *context) {
+  if (context->results != NULL)
+    free(context->results);
+  context->results = malloc(context->count * sizeof(test_result_condition));
   int *stdouts = malloc(context->count * sizeof(int));
   int *stderrs = malloc(context->count * sizeof(int));
 
@@ -103,11 +115,11 @@ test_result_condition *test_run(test_context *context) {
       (void)waitpid(test_pid, &status, WUNTRACED);
       bool has_failed = status != 0;
       if (has_failed == context->should_fail[i]) {
-        results[i] = TEST_SUCCESS;
+        context->results[i] = TEST_SUCCESS;
         success_count += 1;
         printf("\x1b[1;32mPASS\x1b[0m\n");
       } else {
-        results[i] = TEST_FAILED;
+        context->results[i] = TEST_FAILED;
         printf("\x1b[1;31mFAIL\x1b[0m\n");
       }
       fflush(stdout);
@@ -126,7 +138,7 @@ test_result_condition *test_run(test_context *context) {
         context->count - success_count);
 
   for (size_t i = 0; i < context->count; i += 1) {
-    if (results[i] != TEST_FAILED) continue;
+    if (context->results[i] != TEST_FAILED) continue;
     printf("Output from test '%s':\n", context->test_names[i]);
     printf("[stdout]\n");
     __test_print_output(stdouts[i]);
@@ -134,7 +146,8 @@ test_result_condition *test_run(test_context *context) {
     __test_print_output(stderrs[i]);
   }
 
-  return results;
+  free(stdouts);
+  free(stderrs);
 }
 
 void __test_print_output(int fd) {
