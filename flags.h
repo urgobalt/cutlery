@@ -1,6 +1,7 @@
 #ifndef FLAGS_H
 #define FLAGS_H
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -9,23 +10,27 @@
 
 typedef struct flags_string_list {
   struct flags_string_list* next;
-  struct flags_string_list* prev;
   char* content;
 } flags_string_list;
 
+typedef struct flags_item {
+  void* value;
+  const char* name;
+  const char* help;
+  unsigned char short_name;
+} flags_item;
+
 typedef struct flags_container {
-  // Size
+  // Content
+  flags_item* items;
+  flags_item** short_to_long_map;
   size_t count;
   size_t capacity;
 
-  // Flags content
-  int8_t* values;
-  const char** names;
-  char* short_names;
-  const char** help;
-
   // Memory log
   flags_string_list** string_list_list;
+  size_t string_list_count;
+  size_t string_list_capacity;
 } flags_container;
 
 typedef struct argument_list {
@@ -34,6 +39,7 @@ typedef struct argument_list {
 } argument_list;
 
 flags_container flags_init(void);
+// Free all of the memory allocated by flags
 void flags_deinit(flags_container* flags);
 
 char* flags_fprint_err(int errcode);
@@ -42,89 +48,113 @@ char* flags_usage(flags_container* flags);
 int flags_parse(flags_container* flags, argument_list* args);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
-int8_t * flags_i8 (flags_container* flags, const char* name, char short_name, int8_t  value, char* help);
+int8_t * flags_i8 (flags_container* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
 // Define a numeric flag of with the size of 2 bytes / int16_t with default value
-int16_t* flags_i16(flags_container* flags, const char* name, char short_name, int16_t value, char* help);
+int16_t* flags_i16(flags_container* flags, const char* name, unsigned char short_name, int16_t value, const char* help);
 // Define a numeric flag of with the size of 4 bytes / int32_t with default value
-int32_t* flags_i32(flags_container* flags, const char* name, char short_name, int32_t value, char* help);
+int32_t* flags_i32(flags_container* flags, const char* name, unsigned char short_name, int32_t value, const char* help);
 // Define a numeric flag of with the size of 8 bytes / int64_t with default value
-int64_t* flags_i64(flags_container* flags, const char* name, char short_name, int64_t value, char* help);
+int64_t* flags_i64(flags_container* flags, const char* name, unsigned char short_name, int64_t value, const char* help);
 
 // Define a numeric flag of with the size of 1 byte / uint8_t with default value
-uint8_t * flags_u8 (flags_container* flags, const char* name, char short_name, uint8_t  value, char* help);
+uint8_t * flags_u8 (flags_container* flags, const char* name, unsigned char short_name, uint8_t  value, const char* help);
 // Define a numeric flag of with the size of 2 bytes / uint16_t with default value
-uint16_t* flags_u16(flags_container* flags, const char* name, char short_name, uint16_t value, char* help);
+uint16_t* flags_u16(flags_container* flags, const char* name, unsigned char short_name, uint16_t value, const char* help);
 // Define a numeric flag of with the size of 4 bytes / uint32_t with default value
-uint32_t* flags_u32(flags_container* flags, const char* name, char short_name, uint32_t value, char* help);
+uint32_t* flags_u32(flags_container* flags, const char* name, unsigned char short_name, uint32_t value, const char* help);
 // Define a numeric flag of with the size of 8 bytes / uint64_t with default value
-uint64_t* flags_u64(flags_container* flags, const char* name, char short_name, uint64_t value, char* help);
+uint64_t* flags_u64(flags_container* flags, const char* name, unsigned char short_name, uint64_t value, const char* help);
 
 // Define a string flag with default value
-char* flags_str(flags_container* flags, const char* name, char short_name, char* value, char* help);
+char* flags_str(flags_container* flags, const char* name, unsigned char short_name, char* value, const char* help);
 
 // Define a numeric flag of with the size of 1 byte / int8_t
-int8_t * flags_required_i8 (flags_container* flags, const char* name, char short_name, char* help);
+int8_t * flags_required_i8 (flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 2 bytes / int16_t
-int16_t* flags_required_i16(flags_container* flags, const char* name, char short_name, char* help);
+int16_t* flags_required_i16(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 4 bytes / int32_t
-int32_t* flags_required_i32(flags_container* flags, const char* name, char short_name, char* help);
+int32_t* flags_required_i32(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 8 bytes / int64_t
-int64_t* flags_required_i64(flags_container* flags, const char* name, char short_name, char* help);
+int64_t* flags_required_i64(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 
 // Define a numeric flag of with the size of 1 byte / uint8_t
-uint8_t * flags_required_u8 (flags_container* flags, const char* name, char short_name, char* help);
+uint8_t * flags_required_u8 (flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 2 bytes / uint16_t
-uint16_t* flags_required_u16(flags_container* flags, const char* name, char short_name, char* help);
+uint16_t* flags_required_u16(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 4 bytes / uint32_t
-uint32_t* flags_required_u32(flags_container* flags, const char* name, char short_name, char* help);
+uint32_t* flags_required_u32(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Define a numeric flag of with the size of 8 bytes / uint64_t
-uint64_t* flags_required_u64(flags_container* flags, const char* name, char short_name, char* help);
+uint64_t* flags_required_u64(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 
 // Define a string flag
-char* flags_required_str(flags_container* flags, const char* name, char short_name, char* help);
+char* flags_required_str(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 
 // Define a boolean flag with default value
-bool* flags_bool(flags_container* flags, const char* name, char short_name, bool value, char* help);
+bool* flags_bool(flags_container* flags, const char* name, unsigned char short_name, bool value, const char* help);
 
 // Defing a string list flag, meaning that if a user specify the flag more than
 // once, the value is appended to the list.
-flags_string_list* flags_strlist(flags_container* flags, const char* name, char short_name, char* help);
+flags_string_list* flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Iterates the flags string list
 char* flags_next_string(flags_string_list* string_list);
 
 #endif // FLAGS_H
 
 #ifdef FLAGS_IMPLEMENTATION
-const size_t initial_flags_capacity = 512;
+
+// WARN: This capacity need to be a base of 2 in order to perform optimized
+// modulus operation
+const size_t initial_flags_capacity = 128;
+
+// Hash a key using the very fast fnv-1a (Fowler-Noll-Vo 1a) non-cryptographic algorithm
+inline size_t __flags_hash(const char* key) {
+  const size_t offset_basis = 0xcbf29ce484222325;
+  const size_t prime = 0x100000001b3;
+
+  size_t accumulator = offset_basis;
+
+  for (size_t i = 0; key[i] != '\0'; i += 1) {
+    accumulator *= prime;
+    accumulator ^= key[i];
+  }
+
+  return accumulator;
+}
 
 inline flags_container flags_init(void) {
   flags_container flags = {
-    .values       = malloc(initial_flags_capacity),
-    .names        = malloc(initial_flags_capacity * sizeof(char*)),
-    .short_names  = malloc(initial_flags_capacity * sizeof(char)),
-    .help         = malloc(initial_flags_capacity * sizeof(char*)),
-    .count        = 0,
-    .capacity     = 0,
+    .items             = calloc(initial_flags_capacity, sizeof(flags_item)),
+    // NOTE: Might consider doing this with a dynamic array instead of
+    // allocating the maximum possible amount of items instantly.
+    .short_to_long_map = calloc(CHAR_MAX+1, sizeof(flags_item*)),
+    .string_list_list  = malloc(initial_flags_capacity / 4),
+    .count             = 0,
+    .capacity          = 0,
   };
 
-  assert(flags.values      != NULL);
-  assert(flags.names       != NULL);
-  assert(flags.short_names != NULL);
-  assert(flags.help        != NULL);
+  assert(flags.items            != NULL);
+  assert(flags.string_list_list != NULL);
 
   return flags;
 }
 
 inline void flags_deinit(flags_container* flags) {
-  free(flags->values);
-  free(flags->names);
-  free(flags->short_names);
-  free(flags->help);
+  free(flags->items);
+
+  // Free all the allocated string lists
+  for (size_t i = 0; i < flags->string_list_count; i += 1) {
+    flags_string_list* current_item = flags->string_list_list[i];
+    while (current_item != NULL) {
+      flags_string_list* next_item = current_item->next;
+      free(current_item);
+      current_item = next_item;
+    }
+  }
 }
 
 char* flags_fprint_err(int errcode) {
   (void)errcode;
-  assert(false && "TODO: return a error msg");
+  assert(false && "TODO: return an error msg");
 }
 
 char* flags_usage(flags_container* flags) {
@@ -142,63 +172,75 @@ void __flags_realloc(flags_container* flags, size_t capacity) {
   assert(false && "Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program");
 }
 
-void* __flags_append(flags_container* flags, const char* name, const char short_name, void* value, int8_t bytes, char* help) {
+void* __flags_insert(flags_container* flags, const char* name, const unsigned char short_name, void* value, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
 
-  flags->names[flags->count] = name;
-  flags->short_names[flags->count] = short_name;
-  flags->help[flags->count] = help;
+  flags_item item = {
+    .value = value,
+    .name = name,
+    .short_name = short_name,
+    .help = help,
+  };
+  flags_item* addr = NULL;
+  size_t index = __flags_hash(name);
+  // Linear probing
+  for (size_t i = index; i < flags->count; i = (i + 1) & (flags->capacity - 1)) {
+    assert(strcmp(flags->items[i].name, name) == false && "Adding the same flag multiple times is not allowed.");
+    if (flags->items[i].value == 0) {
+      flags->items[i] = item;
+      addr = &flags->items[i];
+      break;
+    }
+  }
 
-  int8_t* addr = &flags->values[flags->count];
-  addr[0] = bytes;
-  memcpy(addr+1, value, bytes);
+  assert(addr != NULL);
 
-  flags->count += bytes+1;
+  flags->short_to_long_map[short_name] = addr;
   return addr;
 }
 
-inline int8_t * flags_i8 (flags_container* flags, const char* name, char short_name, int8_t  value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(int8_t), help);
+inline int8_t * flags_i8 (flags_container* flags, const char* name, unsigned char short_name, int8_t  value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline int16_t* flags_i16(flags_container* flags, const char* name, char short_name, int16_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(int16_t), help);
+inline int16_t* flags_i16(flags_container* flags, const char* name, unsigned char short_name, int16_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline int32_t* flags_i32(flags_container* flags, const char* name, char short_name, int32_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(int32_t), help);
+inline int32_t* flags_i32(flags_container* flags, const char* name, unsigned char short_name, int32_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline int64_t* flags_i64(flags_container* flags, const char* name, char short_name, int64_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(int64_t), help);
+inline int64_t* flags_i64(flags_container* flags, const char* name, unsigned char short_name, int64_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline uint8_t * flags_u8 (flags_container* flags, const char* name, char short_name, uint8_t  value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(uint8_t), help);
+inline uint8_t * flags_u8 (flags_container* flags, const char* name, unsigned char short_name, uint8_t  value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline uint16_t* flags_u16(flags_container* flags, const char* name, char short_name, uint16_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(uint16_t), help);
+inline uint16_t* flags_u16(flags_container* flags, const char* name, unsigned char short_name, uint16_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline uint32_t* flags_u32(flags_container* flags, const char* name, char short_name, uint32_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(uint32_t), help);
+inline uint32_t* flags_u32(flags_container* flags, const char* name, unsigned char short_name, uint32_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline uint64_t* flags_u64(flags_container* flags, const char* name, char short_name, uint64_t value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(uint64_t), help);
+inline uint64_t* flags_u64(flags_container* flags, const char* name, unsigned char short_name, uint64_t value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline char* flags_str(flags_container* flags, const char* name, char short_name, char* value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(char*), help);
+inline char* flags_str(flags_container* flags, const char* name, unsigned char short_name, char* value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-inline bool* flags_bool(flags_container* flags, const char* name, char short_name, bool value, char* help) {
-  return __flags_append(flags, name, short_name, &value, sizeof(bool), help);
+inline bool* flags_bool(flags_container* flags, const char* name, unsigned char short_name, bool value, const char* help) {
+  return __flags_insert(flags, name, short_name, &value, help);
 }
 
-flags_string_list* flags_strlist(flags_container* flags, const char* name, char short_name, char* help) {
+flags_string_list* flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help) {
   (void)flags; (void)name; (void)short_name; (void)help;
   assert(false && "TODO: implement strings lists");
 }
