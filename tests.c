@@ -17,6 +17,7 @@ int main(void) {
   flags_container flags = flags_init();
 
   int8_t* my_feature = flags_i8(&flags, "number", 'n', 0, "Add number to program");
+  flags_string_list* skip = flags_strlist(&flags, "skip", 's', "List of test names to skip");
 
   int err;
   if ((err = flags_parse(&flags, NULL)) != 0) {
