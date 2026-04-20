@@ -53,6 +53,7 @@ typedef struct flags_container {
 typedef struct argument_list {
   char** content;
   size_t count;
+  size_t capacity;
 } argument_list;
 
 flags_container flags_init(void);
@@ -62,7 +63,7 @@ void flags_deinit(flags_container* flags);
 char* flags_fprint_err(int errcode);
 char* flags_usage(flags_container* flags);
 
-int flags_parse(flags_container* flags, argument_list* args);
+int flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
 int8_t * flags_i8 (flags_container* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
@@ -182,9 +183,42 @@ char* flags_usage(flags_container* flags) {
   assert(false && "TODO: return the usage for the flags defined");
 }
 
-int flags_parse(flags_container* flags, argument_list* args) {
-  (void)flags; (void)args;
-  assert(false && "TODO: parse the flags");
+int flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]) {
+
+  const unsigned char flag_marker = '-';
+  for (int i = 0; i < argc; i += 1) {
+    if (argv[i][0] == flag_marker) {
+      if (argv[i][1] == flag_marker) {
+        //
+        size_t len  = 0;
+        size_t j    = 2;
+        char* val = NULL;
+        while (argv[i][j] != '\0') {
+          if (argv[i][j] == '=') {
+            argv[i][j] = '\0';
+            val = &argv[i][j+1];
+            break;
+          }
+          len += 1;
+          j += 1;
+        }
+
+        const char* name = malloc(len * sizeof(char));
+      }
+    } else {
+      if (args == NULL) continue;
+      if (args->count >= args->capacity) {
+        args->capacity = args->capacity*2;
+        args->content  = realloc(args->content, args->capacity);
+        assert(args->content != NULL);
+      }
+
+      args->content[args->count] = argv[i];
+      args->count += 1;
+    }
+  }
+
+  return 0;
 }
 
 void __flags_realloc(flags_container* flags, size_t capacity) {
@@ -264,7 +298,8 @@ inline bool* flags_bool(flags_container* flags, const char* name, unsigned char 
 
 flags_string_list* flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help) {
   if (flags->string_list_count >= flags->string_list_capacity) {
-    flags->string_list_items = realloc(flags->string_list_items, flags->string_list_capacity*2);
+    flags->string_list_capacity = flags->string_list_capacity*2;
+    flags->string_list_items = realloc(flags->string_list_items, flags->string_list_capacity);
     assert(flags->string_list_items != NULL);
   }
 
