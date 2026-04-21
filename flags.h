@@ -127,9 +127,9 @@ bool* flags_bool(flags_container* flags, const char* name, unsigned char short_n
 
 // Defing a string list flag, meaning that if a user specify the flag more than
 // once, the value is appended to the list.
-flags_string_list* flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help);
+flags_string_list** flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help);
 // Iterates the flags string list
-char* flags_next_string(flags_string_list* string_list);
+char* flags_next_string(flags_string_list** string_list);
 
 #endif // FLAGS_H
 
@@ -207,19 +207,20 @@ char* flags_usage(flags_container* flags) {
   assert(false && "TODO: return the usage for the flags defined");
 }
 
-void __flags_string_list_append(flags_string_list* list, char* value) {
+void __flags_string_list_append(flags_string_list** list, char* value) {
   // TODO: Handle comma-delimited string lists
 
-  flags_string_list* current = list;
-  while (list->next != NULL)
-    current = current->next;
+  flags_string_list** current = list;
+  while (*current != NULL)
+    current = &(*current)->next;
 
-  current->next = malloc(sizeof(flags_string_list));
-  assert(current->next == NULL);
-  *current->next = (flags_string_list){
+  flags_string_list* datasection = malloc(sizeof(flags_string_list));
+  assert(*current == NULL);
+  *datasection = (flags_string_list){
     .next = NULL,
     .content = value,
   };
+  *current = datasection;
 }
 
 enum flags_error __flags_parse_and_assign_number(flags_container* flags, flags_item* item, char* value, intmax_t min, uintmax_t max) {
@@ -313,11 +314,13 @@ enum flags_error flags_parse(flags_container* flags, argument_list* args, int ar
 
         size_t character_index = 2;
         char* value = NULL;
+        bool explicit_assignment = false;
 
         while (name[character_index] != '\0') {
           if (name[character_index] == '=') {
             name[character_index] = '\0';
             value = &name[character_index+1];
+            explicit_assignment = true;
             break;
           }
           character_index += 1;
@@ -328,10 +331,13 @@ enum flags_error flags_parse(flags_container* flags, argument_list* args, int ar
           value = argv[argument_index];
         }
 
-        enum flags_error error;
-        // TODO: Handle anonymous value for boolean flags
-        if ((error = __flags_update(flags, name+2, value)) != 0) {
-          return error;
+        enum flags_error error = __flags_update(flags, name+2, value);
+        if (error != 0) {
+          if (error == FLAGS_NOT_A_BOOL && !explicit_assignment) {
+            argument_index -= 1;
+          } else {
+            return error;
+          }
         }
       } else {
         assert(false && "TODO: handle short flags");
@@ -427,7 +433,9 @@ inline bool* flags_bool(flags_container* flags, const char* name, unsigned char 
   return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_BOOL, help);
 }
 
-flags_string_list* flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help) {
+// TODO: Reconsider how to handle flags_strlist because the current
+// functionality is far too complicated/unclear to use
+flags_string_list** flags_strlist(flags_container* flags, const char* name, unsigned char short_name, const char* help) {
   if (flags->string_list_count >= flags->string_list_capacity) {
     flags->string_list_capacity = flags->string_list_capacity*2;
     flags->string_list_items = realloc(flags->string_list_items, flags->string_list_capacity);
@@ -437,6 +445,13 @@ flags_string_list* flags_strlist(flags_container* flags, const char* name, unsig
   void* value = &flags->string_list_items[flags->string_list_count];
   flags->string_list_count += 1;
   return __flags_insert(flags, name, short_name, value, FLAGS_STRLIST, help);
+}
+
+char* flags_next_string(flags_string_list** string_list) {
+  if (string_list == NULL) return NULL;
+  char* content = (*string_list)->content;
+  *string_list = (*string_list)->next;
+  return content;
 }
 
 #endif // FLAGS_IMPLEMENTATION
