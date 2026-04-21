@@ -3,6 +3,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <string.h>
 #include <errno.h>
 #include <execinfo.h>
 #include <stddef.h>
@@ -26,6 +27,7 @@ typedef struct test_context {
   void (**tests)(void);
   char** test_names;
   bool* should_fail;
+  bool* skipped;
   test_result_condition* results;
   size_t count;
   size_t capacity;
@@ -37,7 +39,7 @@ void test_deinit(test_context* context);
 void test_run(test_context *context);
 
 void test_register(test_context *context, char* name, void (*test)(void), bool should_fail);
-void fail_test_register(test_context *context, void (*test)(void));
+void test_skip(test_context* context, char* name);
 
 // Utility functions
 void test_assert(bool condition, char *message);
@@ -52,12 +54,14 @@ test_context test_init(void) {
   test_context context = {
     .tests       = malloc(initial_capacity * sizeof(void*)),
     .test_names  = malloc(initial_capacity * sizeof(char*)),
+    .skipped     = malloc(initial_capacity * sizeof(bool)),
     .should_fail = malloc(initial_capacity * sizeof(bool)),
     .count       = 0,
     .capacity    = initial_capacity,
   };
   assert(context.tests       != NULL);
   assert(context.test_names  != NULL);
+  assert(context.skipped     != NULL);
   assert(context.should_fail != NULL);
   return context;
 }
@@ -65,6 +69,7 @@ test_context test_init(void) {
 void test_deinit(test_context* context) {
   free(context->tests);
   free(context->test_names);
+  free(context->skipped);
   free(context->should_fail);
   if (context->results != NULL)
     free(context->results);
@@ -83,12 +88,17 @@ void test_run(test_context *context) {
   assert(res == 0 || errno == EEXIST);
 
   size_t success_count = 0;
+  size_t skip_count = 0;
 
   for (size_t i = 0; i < context->count; i += 1) {
     printf("%s => ", context->test_names[i]);
     fflush(stdout);
 
-    // TODO: Implement skip functionality
+    if (context->skipped[i]) {
+      printf("\x1b[1;33mSKIPPED\x1b[0m\n");
+      skip_count += 1;
+      continue;
+    }
 
     char templ[] = "/tmp/cutlerytest/testoutputXXXXXX";
     int stdout_fd = mkstemp(templ);
@@ -126,16 +136,18 @@ void test_run(test_context *context) {
     }
   }
 
-  // TODO: List skipped tests
   printf("\n"
           "=============\n"
           "Completed  = %zu\n"
           "Passed     = %zu\n"
           "Failed     = %zu\n"
+          "Skipped    = %zu\n"
           "=============\n\n",
         context->count,
         success_count,
-        context->count - success_count);
+        context->count - success_count - skip_count,
+        skip_count
+        );
 
   for (size_t i = 0; i < context->count; i += 1) {
     if (context->results[i] != TEST_FAILED) continue;
@@ -145,6 +157,8 @@ void test_run(test_context *context) {
     printf("[stderr]\n");
     __test_print_output(stderrs[i]);
   }
+
+  // TODO: Cleanup temp files
 
   free(stdouts);
   free(stderrs);
@@ -163,21 +177,42 @@ void __test_print_output(int fd) {
   printf("\n");
 }
 
-void test_register(test_context *context, char* name, void (*test)(void), bool should_fail) {
+void test_register(test_context* context, char* name, void (*test)(void), bool should_fail) {
+  for (size_t i = 0; i < context->count; i += 1) {
+    // TODO: Proper error logging for the tests
+    assert(strcmp(context->test_names[i], name) != 0 && "Name of test already exist");
+  }
+
   if (context->count >= context->capacity) {
     context->capacity = context->capacity*2;
-    context->tests = realloc(context->tests, context->capacity * sizeof(test));
-    context->test_names = realloc(context->test_names, context->capacity * sizeof(name));
+    context->tests       = realloc(context->tests, context->capacity * sizeof(test));
+    context->test_names  = realloc(context->test_names, context->capacity * sizeof(name));
+    context->skipped     = realloc(context->skipped, context->capacity * sizeof(bool));
     context->should_fail = realloc(context->should_fail, context->capacity * sizeof(should_fail));
 
-    assert(context->tests != NULL);
-    assert(context->test_names != NULL);
+    assert(context->tests       != NULL);
+    assert(context->test_names  != NULL);
+    assert(context->skipped     != NULL);
+    assert(context->should_fail != NULL);
   }
 
   context->tests[context->count] = test;
   context->test_names[context->count] = name;
+  context->skipped[context->count] = false;
   context->should_fail[context->count] = should_fail;
   context->count += 1;
+}
+
+void test_skip(test_context* context, char* name) {
+  for (size_t i = 0; i < context->count; i += 1) {
+    if (strcmp(context->test_names[i], name) == 0) {
+      context->skipped[i] = true;
+      return;
+    }
+  }
+
+  // TODO: Proper error logging for the tests
+  assert(false && "Name does not exist");
 }
 
 #endif // TEST_IMPLEMENTATION

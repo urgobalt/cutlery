@@ -30,8 +30,11 @@ int main(int argc, char* argv[]) {
 
   test_context context = test_init();
 
-  test_register(&context, "failing", &failing, true);
+  test_register(&context, "expect_failing", &failing, true);
+  test_register(&context, "failing", &failing, false);
   test_register(&context, "passing", &passing, false);
+
+  test_skip(&context, "failing");
 
   test_run(&context);
 
