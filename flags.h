@@ -1,6 +1,9 @@
 #ifndef FLAGS_H
 #define FLAGS_H
 
+#define _POSIX_C_SOURCE 200809L
+
+#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,6 +11,14 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
+
+enum flags_error {
+  FLAGS_SUCCESS = 0,
+  FLAGS_ERROR_NOT_FOUND,
+  FLAGS_NAN,
+  FLAGS_NUMBER_OUT_OF_RANGE,
+  FLAGS_NOT_A_BOOL,
+};
 
 enum flags_type {
   FLAGS_EMPTY = 0,
@@ -48,6 +59,9 @@ typedef struct flags_container {
   flags_string_list** string_list_items;
   size_t string_list_count;
   size_t string_list_capacity;
+
+  // Error handling
+  char* error_msg;
 } flags_container;
 
 typedef struct argument_list {
@@ -60,10 +74,11 @@ flags_container flags_init(void);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_container* flags);
 
-char* flags_fprint_err(int errcode);
+char* flags_fprint_err(flags_container* flags, int errcode);
 char* flags_usage(flags_container* flags);
 
-int flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]);
+// WARN: This function will modify the content of the argv parameter
+enum flags_error flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
 int8_t * flags_i8 (flags_container* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
@@ -122,7 +137,9 @@ char* flags_next_string(flags_string_list* string_list);
 
 // WARN: This capacity need to be a base of 2 in order to perform optimized
 // modulus operation
-const size_t initial_flags_capacity = 128;
+const size_t __flags_initial_flags_capacity = 128;
+const size_t __flags_error_msg_max_len = 160; // Double the size of a normal terminal
+
 
 // Hash a key using the very fast fnv-1a (Fowler-Noll-Vo 1a) non-cryptographic algorithm
 inline size_t __flags_hash(const char* key) {
@@ -141,26 +158,32 @@ inline size_t __flags_hash(const char* key) {
 
 inline flags_container flags_init(void) {
   flags_container flags = {
-    .items                = calloc(initial_flags_capacity, sizeof(flags_item)),
+    .items                = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
     // NOTE: Might consider doing this with a dynamic array instead of
     // allocating the maximum possible amount of items instantly.
     .short_to_long_map    = calloc(CHAR_MAX+1, sizeof(flags_item*)),
     .count                = 0,
-    .capacity             = initial_flags_capacity,
+    .capacity             = __flags_initial_flags_capacity,
 
-    .string_list_items    = malloc(initial_flags_capacity / 4),
+    .string_list_items    = calloc(__flags_initial_flags_capacity / 4, sizeof(flags_string_list*)),
     .string_list_count    = 0,
-    .string_list_capacity = initial_flags_capacity / 4,
+    .string_list_capacity = __flags_initial_flags_capacity / 4,
+
+    .error_msg            = malloc(__flags_error_msg_max_len * sizeof(char)),
   };
 
   assert(flags.items             != NULL);
+  assert(flags.short_to_long_map != NULL);
   assert(flags.string_list_items != NULL);
+  assert(flags.error_msg         != NULL);
 
   return flags;
 }
 
 inline void flags_deinit(flags_container* flags) {
   free(flags->items);
+  free(flags->short_to_long_map);
+  free(flags->error_msg);
 
   // Free all the allocated string lists
   for (size_t i = 0; i < flags->string_list_count; i += 1) {
@@ -171,10 +194,11 @@ inline void flags_deinit(flags_container* flags) {
       current_item = next_item;
     }
   }
+  free(flags->string_list_items);
 }
 
-char* flags_fprint_err(int errcode) {
-  (void)errcode;
+char* flags_fprint_err(flags_container* flags, int errcode) {
+  (void)flags; (void)errcode;
   assert(false && "TODO: return an error msg");
 }
 
@@ -183,27 +207,134 @@ char* flags_usage(flags_container* flags) {
   assert(false && "TODO: return the usage for the flags defined");
 }
 
-int flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]) {
+void __flags_string_list_append(flags_string_list* list, char* value) {
+  // TODO: Handle comma-delimited string lists
+
+  flags_string_list* current = list;
+  while (list->next != NULL)
+    current = current->next;
+
+  current->next = malloc(sizeof(flags_string_list));
+  assert(current->next == NULL);
+  *current->next = (flags_string_list){
+    .next = NULL,
+    .content = value,
+  };
+}
+
+enum flags_error __flags_parse_and_assign_number(flags_container* flags, flags_item* item, char* value, intmax_t min, uintmax_t max) {
+  for (size_t i = 0; i < strnlen(value, 0xFFFFFFFFFFFFFFFF); i += 1){
+    if (!isdigit(value[i])) {
+      snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a number, found: %s", item->name, value);
+      return FLAGS_NAN;
+    }
+  }
+  long long number = atoll(value);
+  if ((intmax_t)number < min || (uintmax_t)number > max) {
+    return FLAGS_NUMBER_OUT_OF_RANGE;
+  }
+  item->value = (void*)(uintptr_t)number;
+  return FLAGS_SUCCESS;
+}
+
+enum flags_error __flags_parse_and_assign_bool(flags_item* item, char* value) {
+  if ( strcmp(value, "true") == 0
+    || strcmp(value, "TRUE") == 0
+    || strcmp(value, "1") == 0) {
+    item->value = (void*)true;
+    return FLAGS_SUCCESS;
+  }
+
+  if ( strcmp(value, "false") == 0
+    || strcmp(value, "FALSE") == 0
+    || strcmp(value, "0") == 0) {
+    item->value = (void*)false;
+    return FLAGS_SUCCESS;
+  }
+
+  item->value = (void*)true;
+  return FLAGS_NOT_A_BOOL;
+}
+
+enum flags_error __flags_update(flags_container* flags, char* name, char* value) {
+  size_t index = __flags_hash(name) & (flags->capacity - 1);
+  for (size_t i = 0; i < flags->capacity; i += 1) {
+    flags_item* item = &flags->items[index];
+    printf("name: %s\n", name);
+    printf("type: %i\n", item->type);
+    if (item->type == FLAGS_EMPTY)
+      return FLAGS_ERROR_NOT_FOUND;
+    assert(item->name != NULL);
+    if (strcmp(item->name, name) == 0) {
+      switch (item->type) {
+      case FLAGS_STR:
+        item->value = value;
+        return FLAGS_SUCCESS;
+      case FLAGS_i8:
+        return __flags_parse_and_assign_number(flags, item, value, INT8_MIN, INT8_MAX);
+      case FLAGS_i16:
+        return __flags_parse_and_assign_number(flags, item, value, INT16_MIN, INT16_MAX);
+      case FLAGS_i32:
+        return __flags_parse_and_assign_number(flags, item, value, INT32_MIN, INT32_MAX);
+      case FLAGS_i64:
+        return __flags_parse_and_assign_number(flags, item, value, INT64_MIN, INT64_MAX);
+      case FLAGS_u8:
+        return __flags_parse_and_assign_number(flags, item, value, 0, UINT8_MAX);
+      case FLAGS_u16:
+        return __flags_parse_and_assign_number(flags, item, value, 0, UINT16_MAX);
+      case FLAGS_u32:
+        return __flags_parse_and_assign_number(flags, item, value, 0, UINT32_MAX);
+      case FLAGS_u64:
+        return __flags_parse_and_assign_number(flags, item, value, 0, UINT64_MAX);
+      case FLAGS_STRLIST:
+        __flags_string_list_append(item->value, value);
+        return FLAGS_SUCCESS;
+      case FLAGS_BOOL:
+        return __flags_parse_and_assign_bool(item, value);
+      case FLAGS_EMPTY:
+        assert(false && "Unreachable");
+      }
+    }
+    index = (index+1) & (flags->capacity - 1);
+  }
+  return FLAGS_ERROR_NOT_FOUND;
+}
+
+enum flags_error flags_parse(flags_container* flags, argument_list* args, int argc, char* argv[]) {
 
   const unsigned char flag_marker = '-';
-  for (int i = 0; i < argc; i += 1) {
-    if (argv[i][0] == flag_marker) {
-      if (argv[i][1] == flag_marker) {
-        //
-        size_t len  = 0;
-        size_t j    = 2;
-        char* val = NULL;
-        while (argv[i][j] != '\0') {
-          if (argv[i][j] == '=') {
-            argv[i][j] = '\0';
-            val = &argv[i][j+1];
+
+  for (int argument_index = 0; argument_index < argc; argument_index += 1) {
+
+    char* name = argv[argument_index];
+
+    if (name[0] == flag_marker) {
+      if (name[1] == flag_marker) {
+
+        size_t character_index = 2;
+        char* value = NULL;
+
+        while (name[character_index] != '\0') {
+          if (name[character_index] == '=') {
+            name[character_index] = '\0';
+            value = &name[character_index+1];
             break;
           }
-          len += 1;
-          j += 1;
+          character_index += 1;
         }
 
-        const char* name = malloc(len * sizeof(char));
+        if (value == NULL) {
+          argument_index += 1;
+          value = argv[argument_index];
+        }
+
+        enum flags_error error;
+        // TODO: Handle anonymous value for boolean flags
+        if ((error = __flags_update(flags, name+2, value)) != 0) {
+          return error;
+        }
+      } else {
+        assert(false && "TODO: handle short flags");
       }
     } else {
       if (args == NULL) continue;
@@ -213,7 +344,7 @@ int flags_parse(flags_container* flags, argument_list* args, int argc, char* arg
         assert(args->content != NULL);
       }
 
-      args->content[args->count] = argv[i];
+      args->content[args->count] = argv[argument_index];
       args->count += 1;
     }
   }
@@ -233,7 +364,7 @@ void* __flags_insert(flags_container* flags, const char* name, const unsigned ch
   flags_item* addr = NULL;
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
-    assert(flags->items[index].name == 0 || (strcmp(flags->items[index].name, name) == false && "Adding the same flag multiple times is not allowed."));
+    assert(flags->items[index].name == NULL || (strcmp(flags->items[index].name, name) == 0 && "Adding the same flag multiple times is not allowed."));
     if (flags->items[index].type == FLAGS_EMPTY) {
       flags->items[index] = (flags_item) {
         .value = value,
