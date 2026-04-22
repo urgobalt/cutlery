@@ -23,7 +23,7 @@ enum flags_error {
 enum flags_type {
   FLAGS_EMPTY = 0,
   FLAGS_STR,
-  FLAGS_STRLIST,
+  FLAGS_MULTI_STRING,
   FLAGS_BOOL,
   FLAGS_i8,
   FLAGS_i16,
@@ -175,13 +175,21 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   assert(addr != NULL);
 
   flags->short_to_long_map[short_name] = addr;
-  return addr;
+  return &addr->value;
 }
 
 void __flags_string_list_append(flags_string_list* list, char* value) {
   // TODO: Handle comma-delimited string lists
-  (void)list; (void)value;
-  assert(false && "TODO: Implement the string list append functionality");
+
+  if (list == NULL) return;
+  if (list->count >= list->capacity) {
+    list->capacity = list->capacity*2;
+    list->content  = realloc(list->content, list->capacity);
+    assert(list->content != NULL);
+  }
+
+  list->content[list->count] = value;
+  list->count += 1;
 }
 
 enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, char* value, intmax_t min, uintmax_t max) {
@@ -248,7 +256,7 @@ enum flags_error __flags_update(flags_context* flags, char* name, char* value) {
         return __flags_parse_and_assign_number(flags, item, value, 0, UINT32_MAX);
       case FLAGS_u64:
         return __flags_parse_and_assign_number(flags, item, value, 0, UINT64_MAX);
-      case FLAGS_STRLIST:
+      case FLAGS_MULTI_STRING:
         __flags_string_list_append(item->value, value);
         return FLAGS_SUCCESS;
       case FLAGS_BOOL:
@@ -285,7 +293,7 @@ inline void flags_init(flags_context* flags) {
 inline void flags_deinit(flags_context* flags) {
   // Free all the allocated string lists
   for (size_t i = 0; i < flags->count; i += 1) {
-    if (flags->items[i].type == FLAGS_STRLIST) {
+    if (flags->items[i].type == FLAGS_MULTI_STRING) {
       free(flags->items[i].value);
     }
   }
@@ -347,15 +355,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int 
         assert(false && "TODO: handle short flags");
       }
     } else {
-      if (args == NULL) continue;
-      if (args->count >= args->capacity) {
-        args->capacity = args->capacity*2;
-        args->content  = realloc(args->content, args->capacity);
-        assert(args->content != NULL);
-      }
-
-      args->content[args->count] = argv[argument_index];
-      args->count += 1;
+      __flags_string_list_append(args, argv[argument_index]);
     }
   }
 
@@ -404,11 +404,9 @@ inline bool* flags_bool(flags_context* flags, const char* name, unsigned char sh
   return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_BOOL, help);
 }
 
-// TODO: Reconsider how to handle flags_strlist because the current
-// functionality is far too complicated/unclear to use
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help) {
-  (void)flags; (void)name; (void)short_name; (void)help;
-  assert(false && "TODO: Implement the flags_strlist functionality");
+  flags_string_list* list = malloc(sizeof(flags_string_list));
+  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STRING, help));
 }
 
 #endif // FLAGS_IMPLEMENTATION
