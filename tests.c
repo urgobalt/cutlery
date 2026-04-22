@@ -14,10 +14,11 @@ void passing(void) {
 }
 
 int main(int argc, char* argv[]) {
-  flags_container flags = flags_init();
+  flags_context flags = {0};
+  flags_init(&flags);
 
   int8_t* my_number = flags_i8(&flags, "number", 'n', 0, "Add number to program");
-  flags_string_list** skip = flags_strlist(&flags, "skip", 's', "List of test names to skip");
+  // flags_string_list** skip = flags_strlist(&flags, "skip", 's', "List of test names to skip");
 
   int err;
   if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
@@ -26,7 +27,7 @@ int main(int argc, char* argv[]) {
   }
 
   printf("number: %i\n", *my_number);
-  printf("string: %s\n", flags_next_string(skip));
+  // printf("string: %s\n", flags_next_string(skip));
 
   test_context context = test_init();
 
