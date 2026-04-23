@@ -17,7 +17,6 @@ int main(int argc, char* argv[]) {
   flags_context flags = {0};
   flags_init(&flags);
 
-  int8_t* my_number = flags_i8(&flags, "number", 'n', 0, "Add number to program");
   flags_string_list* skip = flags_multi_str(&flags, "skip", 's', "List of test names to skip");
 
   int err;
@@ -26,9 +25,6 @@ int main(int argc, char* argv[]) {
     printf("%s", flags_usage(&flags));
   }
 
-  printf("number: %i\n", *my_number);
-  printf("string: %s\n", skip->content[0]);
-
   test_context context = test_init();
 
   test_register(&context, "expect_failing", &failing, true);
@@ -36,6 +32,10 @@ int main(int argc, char* argv[]) {
   test_register(&context, "passing", &passing, false);
 
   test_skip(&context, "failing");
+
+  for (size_t i = 0; i < skip->count; i += 1) {
+    test_skip(&context, skip->content[i]);
+  }
 
   test_run(&context);
 

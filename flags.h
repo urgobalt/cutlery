@@ -15,15 +15,16 @@
 enum flags_error {
   FLAGS_SUCCESS = 0,
   FLAGS_ERROR_NOT_FOUND,
-  FLAGS_NAN,
-  FLAGS_NUMBER_OUT_OF_RANGE,
-  FLAGS_NOT_A_BOOL,
+  FLAGS_ERROR_VALUE_NOT_PROVIDED,
+  FLAGS_ERROR_NAN,
+  FLAGS_ERROR_NUMBER_OUT_OF_RANGE,
+  FLAGS_ERROR_NOT_A_BOOL,
 };
 
 enum flags_type {
   FLAGS_EMPTY = 0,
   FLAGS_STR,
-  FLAGS_MULTI_STRING,
+  FLAGS_MULTI_STR,
   FLAGS_BOOL,
   FLAGS_i8,
   FLAGS_i16,
@@ -115,6 +116,8 @@ char* flags_required_str(flags_context* flags, const char* name, unsigned char s
 // Define a boolean flag with default value
 bool* flags_bool(flags_context* flags, const char* name, unsigned char short_name, bool value, const char* help);
 
+// Define a flag that instead of redifining the flags value, appends it into a list
+// WARN: If not flags are provided, then the content will be NULL
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help);
 
 #endif // FLAGS_H
@@ -126,6 +129,7 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 // WARN: This capacity need to be a base of 2 in order to perform optimized
 // modulus operation
 const size_t __flags_initial_flags_capacity = 128;
+const size_t __flags_initial_string_list_capacity = 32;
 const size_t __flags_error_msg_max_len = 160; // Double the size of a normal terminal
 
 // START OF PRIVATE FUNCTIONS
@@ -157,6 +161,8 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   flags_item* addr = NULL;
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
+    // TODO: Create a proper crashing function to signal to the user that it
+    // will crash with a certain message
     assert(flags->items[index].name == NULL || (strcmp(flags->items[index].name, name) == 0 && "Adding the same flag multiple times is not allowed."));
     if (flags->items[index].type == FLAGS_EMPTY) {
       flags->items[index] = (flags_item) {
@@ -175,15 +181,20 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   assert(addr != NULL);
 
   flags->short_to_long_map[short_name] = addr;
+  flags->count += 1;
+
   return &addr->value;
 }
 
 void __flags_string_list_append(flags_string_list* list, char* value) {
   // TODO: Handle comma-delimited string lists
 
-  if (list == NULL) return;
+  assert(list != NULL);
+
   if (list->count >= list->capacity) {
     list->capacity = list->capacity*2;
+    if (list->capacity == 0)
+      list->capacity = __flags_initial_string_list_capacity;
     list->content  = realloc(list->content, list->capacity);
     assert(list->content != NULL);
   }
@@ -193,22 +204,33 @@ void __flags_string_list_append(flags_string_list* list, char* value) {
 }
 
 enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, char* value, intmax_t min, uintmax_t max) {
-  for (size_t i = 0; i < strnlen(value, 0xFFFFFFFFFFFFFFFF); i += 1){
+  assert(item        != NULL);
+  assert(item->value != NULL);
+
+  if (value == NULL) {
+    snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a number", item->name);
+    return FLAGS_ERROR_VALUE_NOT_PROVIDED;
+  }
+
+  for (size_t i = 0; i < strlen(value); i += 1){
     if (!isdigit(value[i])) {
       snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a number, found: %s", item->name, value);
-      return FLAGS_NAN;
+      return FLAGS_ERROR_NAN;
     }
   }
   long long number = atoll(value);
   if ((intmax_t)number < min || (uintmax_t)number > max) {
-    return FLAGS_NUMBER_OUT_OF_RANGE;
+    return FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
   }
   item->value = (void*)(uintptr_t)number;
   return FLAGS_SUCCESS;
 }
 
+// TODO: Fix how bool is interacted with, I need the information about bool much
+// mroe easily accessible to simplify the code structure
 enum flags_error __flags_parse_and_assign_bool(flags_item* item, char* value) {
-  if ( strcmp(value, "true") == 0
+  if ( value == NULL
+    || strcmp(value, "true") == 0
     || strcmp(value, "TRUE") == 0
     || strcmp(value, "1") == 0) {
     item->value = (void*)true;
@@ -223,21 +245,23 @@ enum flags_error __flags_parse_and_assign_bool(flags_item* item, char* value) {
   }
 
   item->value = (void*)true;
-  return FLAGS_NOT_A_BOOL;
+  return FLAGS_ERROR_NOT_A_BOOL;
 }
 
 enum flags_error __flags_update(flags_context* flags, char* name, char* value) {
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
-    printf("name: %s\n", name);
-    printf("type: %i\n", item->type);
     if (item->type == FLAGS_EMPTY)
       return FLAGS_ERROR_NOT_FOUND;
     assert(item->name != NULL);
     if (strcmp(item->name, name) == 0) {
       switch (item->type) {
       case FLAGS_STR:
+        if (value == NULL) {
+          snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a string", item->name);
+          return FLAGS_ERROR_VALUE_NOT_PROVIDED;
+        }
         item->value = value;
         return FLAGS_SUCCESS;
       case FLAGS_i8:
@@ -256,7 +280,11 @@ enum flags_error __flags_update(flags_context* flags, char* name, char* value) {
         return __flags_parse_and_assign_number(flags, item, value, 0, UINT32_MAX);
       case FLAGS_u64:
         return __flags_parse_and_assign_number(flags, item, value, 0, UINT64_MAX);
-      case FLAGS_MULTI_STRING:
+      case FLAGS_MULTI_STR:
+        if (value == NULL) {
+          snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a string", item->name);
+          return FLAGS_ERROR_VALUE_NOT_PROVIDED;
+        }
         __flags_string_list_append(item->value, value);
         return FLAGS_SUCCESS;
       case FLAGS_BOOL:
@@ -292,9 +320,12 @@ inline void flags_init(flags_context* flags) {
 
 inline void flags_deinit(flags_context* flags) {
   // Free all the allocated string lists
-  for (size_t i = 0; i < flags->count; i += 1) {
-    if (flags->items[i].type == FLAGS_MULTI_STRING) {
-      free(flags->items[i].value);
+  for (size_t i = 0; i < flags->capacity; i += 1) {
+    if (flags->items[i].type == FLAGS_MULTI_STR) {
+      flags_string_list* value = flags->items[i].value;
+      if (value->content != NULL)
+        free(value->content);
+      free(value);
     }
   }
 
@@ -313,6 +344,7 @@ char* flags_usage(flags_context* flags) {
   assert(false && "TODO: return the usage for the flags defined");
 }
 
+// TODO: STOP MODIFYING ARGV DIRECTLY
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int argc, char* argv[]) {
 
   const unsigned char flag_marker = '-';
@@ -338,14 +370,14 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int 
           character_index += 1;
         }
 
-        if (value == NULL) {
+        if (value == NULL && argument_index < argc) {
           argument_index += 1;
           value = argv[argument_index];
         }
 
         enum flags_error error = __flags_update(flags, name+2, value);
         if (error != 0) {
-          if (error == FLAGS_NOT_A_BOOL && !explicit_assignment) {
+          if (error == FLAGS_ERROR_NOT_A_BOOL && !explicit_assignment) {
             argument_index -= 1;
           } else {
             return error;
@@ -355,6 +387,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int 
         assert(false && "TODO: handle short flags");
       }
     } else {
+      if (args == NULL) continue;
       __flags_string_list_append(args, argv[argument_index]);
     }
   }
@@ -406,7 +439,9 @@ inline bool* flags_bool(flags_context* flags, const char* name, unsigned char sh
 
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help) {
   flags_string_list* list = malloc(sizeof(flags_string_list));
-  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STRING, help));
+  assert(list != NULL);
+  *list = (flags_string_list){0};
+  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, help));
 }
 
 #endif // FLAGS_IMPLEMENTATION
