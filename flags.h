@@ -3,14 +3,15 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#include <ctype.h>
-#include <limits.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
-#include <assert.h>
+#include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <ctype.h>
+#include <assert.h>
+#include <limits.h>
 
 enum flags_error {
   FLAGS_SUCCESS = 0,
@@ -51,8 +52,10 @@ typedef struct flags_container {
   size_t count;
   size_t capacity;
 
-  // Error handling
+  // Parsing
   char* error_msg;
+  char** argv;
+  int argc;
 } flags_context;
 
 typedef struct flags_string_list {
@@ -68,8 +71,7 @@ void flags_deinit(flags_context* flags);
 char* flags_fprint_err(flags_context* flags, int errcode);
 char* flags_usage(flags_context* flags);
 
-// WARN: This function will modify the content of the argv parameter
-enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int argc, char* argv[]);
+enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
 int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
@@ -329,6 +331,11 @@ inline void flags_deinit(flags_context* flags) {
     }
   }
 
+  for (int i = 0; i < flags->argc; i += 1) {
+    free(flags->argv[i]);
+  }
+  free(flags->argv);
+
   free(flags->items);
   free(flags->short_to_long_map);
   free(flags->error_msg);
@@ -344,14 +351,24 @@ char* flags_usage(flags_context* flags) {
   assert(false && "TODO: return the usage for the flags defined");
 }
 
-// TODO: STOP MODIFYING ARGV DIRECTLY
-enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int argc, char* argv[]) {
+enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
+
+  flags->argc = argc;
+  flags->argv = malloc(argc * sizeof(char**));
+  assert(flags->argv != NULL);
+
+  for (int i = 0; i < argc; i += 1) {
+    // NOTE: We could possible get the length of the string here and store it
+    // somewhere for later reuse (optimization)
+    flags->argv[i] = strdup(argv[i]);
+    assert(flags->argv[i] != NULL);
+  }
 
   const unsigned char flag_marker = '-';
 
   for (int argument_index = 0; argument_index < argc; argument_index += 1) {
 
-    char* name = argv[argument_index];
+    char* name = flags->argv[argument_index];
 
     if (name[0] == flag_marker) {
       if (name[1] == flag_marker) {
@@ -372,7 +389,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int 
 
         if (value == NULL && argument_index < argc) {
           argument_index += 1;
-          value = argv[argument_index];
+          value = flags->argv[argument_index];
         }
 
         enum flags_error error = __flags_update(flags, name+2, value);
@@ -388,7 +405,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, int 
       }
     } else {
       if (args == NULL) continue;
-      __flags_string_list_append(args, argv[argument_index]);
+      __flags_string_list_append(args, flags->argv[argument_index]);
     }
   }
 
