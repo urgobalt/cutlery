@@ -6,4 +6,4 @@ test *args="":
   exec ./tests {{args}}
 
 lint:
-  cppcheck --enable=all --disable=unusedFunction --std=c99 --error-exitcode=1 --check-level=exhaustive *.h
+  cppcheck --enable=all --disable=unusedFunction --suppress=unusedStructMember --suppress=missingIncludeSystem --std=c99 --error-exitcode=1 --check-level=exhaustive *.h

@@ -9,6 +9,6 @@
     gcc
     clang-tools
     just
-    cpplint
+    cppcheck
   ];
 }
