@@ -39,7 +39,7 @@ void test_deinit(test_context* context);
 void test_run(test_context *context);
 
 void test_register(test_context *context, char* name, void (*test)(void), bool should_fail);
-void test_skip(test_context* context, char* name);
+void test_skip(test_context* context, const char* name);
 
 // Utility functions
 void test_assert(bool condition, char *message);
@@ -203,7 +203,7 @@ void test_register(test_context* context, char* name, void (*test)(void), bool s
   context->count += 1;
 }
 
-void test_skip(test_context* context, char* name) {
+void test_skip(test_context* context, const char* name) {
   for (size_t i = 0; i < context->count; i += 1) {
     if (strcmp(context->test_names[i], name) == 0) {
       context->skipped[i] = true;

@@ -119,6 +119,7 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 
 #ifdef FLAGS_IMPLEMENTATION
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -135,7 +136,7 @@ const size_t __flags_error_msg_max_len = 160; // Double the size of a normal ter
 // START OF PRIVATE FUNCTIONS
 
 // Hash a key using the very fast fnv-1a (Fowler-Noll-Vo 1a) non-cryptographic algorithm
-inline size_t __flags_hash(const char* key) {
+static inline size_t __flags_hash(const char* key) {
   const size_t offset_basis = 0xcbf29ce484222325;
   const size_t prime = 0x100000001b3;
 
@@ -149,7 +150,7 @@ inline size_t __flags_hash(const char* key) {
   return accumulator;
 }
 
-void __flags_realloc(flags_context* flags, size_t capacity) {
+static void __flags_realloc(flags_context* flags, size_t capacity) {
   (void)flags; (void) capacity;
   assert(false && "Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program");
 }
@@ -186,7 +187,7 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   return &addr->value;
 }
 
-void __flags_string_list_append(flags_string_list* list, char* value) {
+static void __flags_string_list_append(flags_string_list* list, char* value) {
   // TODO: Handle comma-delimited string lists
 
   assert(list != NULL);
@@ -203,7 +204,7 @@ void __flags_string_list_append(flags_string_list* list, char* value) {
   list->count += 1;
 }
 
-enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, char* value, intmax_t min, uintmax_t max) {
+static enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
   assert(item        != NULL);
   assert(item->value != NULL);
 
@@ -228,7 +229,7 @@ enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_ite
 
 // TODO: Fix how bool is interacted with, I need the information about bool much
 // mroe easily accessible to simplify the code structure
-enum flags_error __flags_parse_and_assign_bool(flags_item* item, char* value) {
+static enum flags_error __flags_parse_and_assign_bool(flags_item* item, const char* value) {
   if ( value == NULL
     || strcmp(value, "true") == 0
     || strcmp(value, "TRUE") == 0
@@ -248,7 +249,7 @@ enum flags_error __flags_parse_and_assign_bool(flags_item* item, char* value) {
   return FLAGS_ERROR_NOT_A_BOOL;
 }
 
-enum flags_error __flags_update(flags_context* flags, char* name, char* value) {
+static enum flags_error __flags_update(flags_context* flags, const char* name, char* value) {
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
