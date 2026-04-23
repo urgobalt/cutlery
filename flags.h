@@ -1,16 +1,9 @@
 #ifndef FLAGS_H
 #define FLAGS_H
 
-#define _POSIX_C_SOURCE 200809L
-
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <ctype.h>
-#include <assert.h>
 #include <limits.h>
 
 enum flags_error {
@@ -125,6 +118,11 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 #endif // FLAGS_H
 
 #ifdef FLAGS_IMPLEMENTATION
+
+#include <stdio.h>
+#include <ctype.h>
+#include <string.h>
+#include <assert.h>
 
 // START OF VARIABLES
 
@@ -360,8 +358,10 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
   for (int i = 0; i < argc; i += 1) {
     // NOTE: We could possible get the length of the string here and store it
     // somewhere for later reuse (optimization)
-    flags->argv[i] = strdup(argv[i]);
+    size_t len = strlen(argv[i]) + 1;
+    flags->argv[i] = malloc(len);
     assert(flags->argv[i] != NULL);
+    memcpy(flags->argv[i], argv[i], len);
   }
 
   const unsigned char flag_marker = '-';
