@@ -21,12 +21,11 @@ int main(int argc, char* argv[]) {
 
   int err;
   if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
-    const size_t err_buf_sz = __flags_error_msg_max_len;
-    char* err_buf = malloc(err_buf_sz * sizeof(char));
-    assert(err_buf != NULL);
-    flags_snprint_err(&flags, err_buf, err_buf_sz);
-    printf("Flag parse error: %s\n", err_buf);
-    printf("%s", flags_usage(&flags));
+    printf("Flag parse error:\n");
+    for (size_t i = 0; i < flags.error_list.count; i += 1) {
+      printf("%s", flags.error_list.content[i]);
+    }
+    printf("\n%s", flags_usage(&flags));
   }
 
   test_context context = test_init();
