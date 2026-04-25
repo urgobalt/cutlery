@@ -8,7 +8,7 @@
 
 enum flags_error {
   FLAGS_SUCCESS = 0,
-  FLAGS_ERROR_NOT_FOUND,
+  FLAGS_ERROR_UNDEFINED,
   FLAGS_ERROR_VALUE_NOT_PROVIDED,
   FLAGS_ERROR_NAN,
   FLAGS_ERROR_NUMBER_OUT_OF_RANGE,
@@ -61,7 +61,7 @@ void flags_init(flags_context* flags);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_context* flags);
 
-char* flags_fprint_err(flags_context* flags, int errcode);
+char* flags_fprint_err(enum flags_error errcode);
 char* flags_usage(flags_context* flags);
 
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
@@ -254,7 +254,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
     if (item->type == FLAGS_EMPTY)
-      return FLAGS_ERROR_NOT_FOUND;
+      return FLAGS_ERROR_UNDEFINED;
     assert(item->name != NULL);
     if (strcmp(item->name, name) == 0) {
       switch (item->type) {
@@ -296,7 +296,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
     }
     index = (index+1) & (flags->capacity - 1);
   }
-  return FLAGS_ERROR_NOT_FOUND;
+  return FLAGS_ERROR_UNDEFINED;
 }
 
 // END OF PRIVATE FUNCTIONS
@@ -340,9 +340,21 @@ inline void flags_deinit(flags_context* flags) {
   free(flags->error_msg);
 }
 
-char* flags_fprint_err(flags_context* flags, int errcode) {
-  (void)flags; (void)errcode;
-  assert(false && "TODO: return an error msg");
+// TODO: Simplify the error handling
+char* flags_fprint_err(enum flags_error errcode) {
+  char* error_str = NULL;
+
+  switch (errcode) {
+  case FLAGS_SUCCESS:                   error_str = "No error found";      break;
+  case FLAGS_ERROR_UNDEFINED:           error_str = "Undefined flag";      break;
+  case FLAGS_ERROR_VALUE_NOT_PROVIDED:  error_str = "Value not found";     break;
+  case FLAGS_ERROR_NAN:                 error_str = "NaN";                 break;
+  case FLAGS_ERROR_NUMBER_OUT_OF_RANGE: error_str = "Number exceed range"; break;
+  case FLAGS_ERROR_NOT_A_BOOL:          error_str = "Not a boolean value"; break;
+  }
+
+  assert(error_str != NULL);
+  return error_str;
 }
 
 char* flags_usage(flags_context* flags) {
