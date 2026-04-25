@@ -21,7 +21,11 @@ int main(int argc, char* argv[]) {
 
   int err;
   if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
-    printf("Flag parse error: %s: %s\n", flags_fprint_err(err), flags.error_msg);
+    const size_t err_buf_sz = __flags_error_msg_max_len;
+    char* err_buf = malloc(err_buf_sz * sizeof(char));
+    assert(err_buf != NULL);
+    flags_snprint_err(&flags, err_buf, err_buf_sz);
+    printf("Flag parse error: %s\n", err_buf);
     printf("%s", flags_usage(&flags));
   }
 

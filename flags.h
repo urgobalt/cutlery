@@ -6,9 +6,10 @@
 #include <stdbool.h>
 #include <limits.h>
 
+// TODO: Make multi-error viable
 enum flags_error {
   FLAGS_SUCCESS = 0,
-  FLAGS_ERROR_UNDEFINED,
+  FLAGS_ERROR_UNKNOWN,
   FLAGS_ERROR_VALUE_NOT_PROVIDED,
   FLAGS_ERROR_NAN,
   FLAGS_ERROR_NUMBER_OUT_OF_RANGE,
@@ -48,6 +49,7 @@ typedef struct flags_container {
   // Parsing
   char* error_msg;
   char** argv;
+  uint8_t error_code;
   int argc;
 } flags_context;
 
@@ -61,8 +63,8 @@ void flags_init(flags_context* flags);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_context* flags);
 
-char* flags_fprint_err(enum flags_error errcode);
 char* flags_usage(flags_context* flags);
+int flags_snprint_err(const flags_context* flags, char* error_buf, size_t error_buf_size);
 
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
 
@@ -124,6 +126,7 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 #include <ctype.h>
 #include <string.h>
 #include <assert.h>
+#include <inttypes.h>
 
 // START OF VARIABLES
 
@@ -152,6 +155,7 @@ static inline size_t __flags_hash(const char* key) {
 
 static void __flags_realloc(flags_context* flags, size_t capacity) {
   (void)flags; (void) capacity;
+  // WARN: Assertion with error message
   assert(false && "Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program");
 }
 
@@ -164,6 +168,7 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   for (size_t i = 0; i < flags->capacity; i += 1) {
     // TODO: Create a proper crashing function to signal to the user that it
     // will crash with a certain message
+    // WARN: Assertion with error message
     assert(flags->items[index].name == NULL || (strcmp(flags->items[index].name, name) == 0 && "Adding the same flag multiple times is not allowed."));
     if (flags->items[index].type == FLAGS_EMPTY) {
       flags->items[index] = (flags_item) {
@@ -209,18 +214,19 @@ static enum flags_error __flags_parse_and_assign_number(flags_context* flags, fl
   assert(item->value != NULL);
 
   if (value == NULL) {
-    snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a number", item->name);
+    snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag '%s' expects a number", item->name);
     return FLAGS_ERROR_VALUE_NOT_PROVIDED;
   }
 
   for (size_t i = 0; i < strlen(value); i += 1){
     if (!isdigit(value[i])) {
-      snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a number, found: %s", item->name, value);
+      snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag '%s' expects a number, found: %s", item->name, value);
       return FLAGS_ERROR_NAN;
     }
   }
   long long number = atoll(value);
   if ((intmax_t)number < min || (uintmax_t)number > max) {
+    snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag '%s' expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, min, max, number);
     return FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
   }
   item->value = (void*)(uintptr_t)number;
@@ -246,6 +252,7 @@ static enum flags_error __flags_parse_and_assign_bool(flags_item* item, const ch
   }
 
   item->value = (void*)true;
+  // TODO: Fix that this does not print a proper error message
   return FLAGS_ERROR_NOT_A_BOOL;
 }
 
@@ -253,14 +260,17 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
-    if (item->type == FLAGS_EMPTY)
-      return FLAGS_ERROR_UNDEFINED;
+
+    if (item->type == FLAGS_EMPTY) {
+goto unknown;
+    }
+
     assert(item->name != NULL);
     if (strcmp(item->name, name) == 0) {
       switch (item->type) {
       case FLAGS_STR:
         if (value == NULL) {
-          snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag %s expects a string", item->name);
+          snprintf(flags->error_msg, __flags_error_msg_max_len, "Flag '%s' expects a string", item->name);
           return FLAGS_ERROR_VALUE_NOT_PROVIDED;
         }
         item->value = value;
@@ -291,12 +301,16 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
       case FLAGS_BOOL:
         return __flags_parse_and_assign_bool(item, value);
       case FLAGS_EMPTY:
+        // WARN: Assertion with error message
         assert(false && "Unreachable");
       }
     }
     index = (index+1) & (flags->capacity - 1);
   }
-  return FLAGS_ERROR_UNDEFINED;
+
+unknown:
+  snprintf(flags->error_msg, __flags_error_msg_max_len, "Expected flag, found '%s'", name);
+  return FLAGS_ERROR_UNKNOWN;
 }
 
 // END OF PRIVATE FUNCTIONS
@@ -311,7 +325,7 @@ inline void flags_init(flags_context* flags) {
     .capacity             = __flags_initial_flags_capacity,
 
     // Error handling
-    .error_msg            = malloc(__flags_error_msg_max_len * sizeof(char)),
+    .error_msg            = calloc(__flags_error_msg_max_len, sizeof(char)),
   };
 
   assert(flags->items             != NULL);
@@ -340,26 +354,32 @@ inline void flags_deinit(flags_context* flags) {
   free(flags->error_msg);
 }
 
-// TODO: Simplify the error handling
-char* flags_fprint_err(enum flags_error errcode) {
+char* flags_usage(flags_context* flags) {
+  (void)flags;
+  // WARN: Assertion with error message
+  assert(false && "TODO: return the usage for the flags defined");
+}
+
+// NOTE: If no error has been thrown then the function will print as such
+int flags_snprint_err(const flags_context* flags, char* error_buf, size_t error_buf_size) {
   char* error_str = NULL;
 
-  switch (errcode) {
+  switch (flags->error_code) {
   case FLAGS_SUCCESS:                   error_str = "No error found";      break;
-  case FLAGS_ERROR_UNDEFINED:           error_str = "Undefined flag";      break;
+  case FLAGS_ERROR_UNKNOWN:             error_str = "Unknown flag";      break;
   case FLAGS_ERROR_VALUE_NOT_PROVIDED:  error_str = "Value not found";     break;
   case FLAGS_ERROR_NAN:                 error_str = "NaN";                 break;
   case FLAGS_ERROR_NUMBER_OUT_OF_RANGE: error_str = "Number exceed range"; break;
   case FLAGS_ERROR_NOT_A_BOOL:          error_str = "Not a boolean value"; break;
+  default:
+    // WARN: assertion with error message
+    assert(false && "Not a valid error code");
   }
 
-  assert(error_str != NULL);
-  return error_str;
-}
+  assert(error_str        != NULL);
+  assert(flags->error_msg != NULL);
 
-char* flags_usage(flags_context* flags) {
-  (void)flags;
-  assert(false && "TODO: return the usage for the flags defined");
+  return snprintf(error_buf, error_buf_size, "%s: %s", error_str, flags->error_msg);
 }
 
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
@@ -369,8 +389,8 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
   assert(flags->argv != NULL);
 
   for (int i = 0; i < argc; i += 1) {
-    // NOTE: We could possible get the length of the string here and store it
-    // somewhere for later reuse (optimization)
+    // NOTE: (optimization) We could possible get the length of the string here and store it
+    // somewhere for later reuse
     size_t len = strlen(argv[i]) + 1;
     flags->argv[i] = malloc(len);
     assert(flags->argv[i] != NULL);
@@ -400,8 +420,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           character_index += 1;
         }
 
-        if (value == NULL && argument_index < argc) {
-          argument_index += 1;
+        if (value == NULL && (argument_index += 1) < flags->argc) {
           value = flags->argv[argument_index];
         }
 
@@ -410,10 +429,12 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           if (error == FLAGS_ERROR_NOT_A_BOOL && !explicit_assignment) {
             argument_index -= 1;
           } else {
+            flags->error_code = error;
             return error;
           }
         }
       } else {
+        // WARN: Assertion with error message
         assert(false && "TODO: handle short flags");
       }
     } else {
