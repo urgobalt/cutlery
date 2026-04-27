@@ -260,29 +260,24 @@ static enum flags_error __flags_parse_and_assign_number(flags_context* flags, fl
   return FLAGS_SUCCESS;
 }
 
-// TODO: Fix how bool is interacted with, I need the information about bool much
-// mroe easily accessible to simplify the code structure
-static enum flags_error __flags_parse_and_assign_bool(flags_item* item, const char* value) {
-  if ( value == NULL
-    || strcmp(value, "true") == 0
+// Returns 1 if true, 0 if false, and -1 if unparsable
+static int __flags_parse_bool(const char* value) {
+  if ( strcmp(value, "true") == 0
     || strcmp(value, "TRUE") == 0
     || strcmp(value, "1") == 0) {
-    item->value = (void*)true;
-    return FLAGS_SUCCESS;
+    return 1;
   }
 
   if ( strcmp(value, "false") == 0
     || strcmp(value, "FALSE") == 0
     || strcmp(value, "0") == 0) {
-    item->value = (void*)false;
-    return FLAGS_SUCCESS;
+    return 0;
   }
 
-  item->value = (void*)true;
-  // TODO: Fix that this does not print a proper error message
-  return FLAGS_ERROR_NOT_A_BOOL;
+  return -1;
 }
 
+// TODO: make value a double pointer to modify within the function
 static enum flags_error __flags_update(flags_context* flags, const char* name, char* value) {
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
@@ -325,8 +320,17 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
         }
         __flags_string_list_append(item->value, value);
         return FLAGS_SUCCESS;
-      case FLAGS_BOOL:
-        return __flags_parse_and_assign_bool(item, value);
+      // TODO: Consider pulling this out into the parent function to simplify
+      // logic
+      case FLAGS_BOOL: {
+          int boolean_value = __flags_parse_bool(value);
+          if (boolean_value == -1) {
+            item->value = (void*)true;
+            return FLAGS_ERROR_NOT_A_BOOL;
+          }
+          item->value = (void*)(intptr_t)boolean_value;
+          return FLAGS_SUCCESS;
+        }
       case FLAGS_EMPTY:
         // WARN: Assertion with error message
         assert(false && "Unreachable");
