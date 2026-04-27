@@ -160,6 +160,7 @@ static void __flags_realloc(flags_context* flags, size_t capacity) {
   assert(false && "Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program");
 }
 
+// TODO: Disallow special characters in flags definition
 void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* value, enum flags_type type, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
@@ -240,19 +241,19 @@ static enum flags_error __flags_parse_and_assign_number(flags_context* flags, fl
   assert(item->value != NULL);
 
   if (value == NULL) {
-    __flags_append_err(flags, "Flag '%s' expects a number", item->name);
+    __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <number>", item->name);
     return FLAGS_ERROR_VALUE_NOT_PROVIDED;
   }
 
   for (size_t i = 0; i < strlen(value); i += 1){
     if (!isdigit(value[i])) {
-      __flags_append_err(flags, "Flag '%s' expects a number, found: %s", item->name, value);
+      __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
       return FLAGS_ERROR_NAN;
     }
   }
   long long number = atoll(value);
   if ((intmax_t)number < min || (uintmax_t)number > max) {
-    __flags_append_err(flags, "Flag '%s' expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, min, max, number);
+    __flags_append_err(flags, "--%s|-%c expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, item->short_name, min, max, number);
     return FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
   }
   item->value = (void*)(uintptr_t)number;
@@ -296,7 +297,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
       switch (item->type) {
       case FLAGS_STR:
         if (value == NULL) {
-          __flags_append_err(flags, "Flag '%s' expects a string", item->name);
+          __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <string>", item->name, item->short_name);
           return FLAGS_ERROR_VALUE_NOT_PROVIDED;
         }
         item->value = value;
@@ -319,7 +320,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
         return __flags_parse_and_assign_number(flags, item, value, 0, UINT64_MAX);
       case FLAGS_MULTI_STR:
         if (value == NULL) {
-          __flags_append_err(flags, "Flag %s expects a string", item->name);
+          __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <string>", item->name, item->short_name);
           return FLAGS_ERROR_VALUE_NOT_PROVIDED;
         }
         __flags_string_list_append(item->value, value);
@@ -335,7 +336,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
   }
 
 unknown:
-  __flags_append_err(flags, "Expected flag, found '%s'", name);
+  __flags_append_err(flags, "Unknown flag. Found: --%s", name);
   return FLAGS_ERROR_UNKNOWN_FLAG;
 }
 

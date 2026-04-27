@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
   if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
     printf("Flag parse error:\n");
     for (size_t i = 0; i < flags.error_list.count; i += 1) {
-      printf("%s", flags.error_list.content[i]);
+      printf("%s\n", flags.error_list.content[i]);
     }
     printf("\n%s", flags_usage(&flags));
   }
