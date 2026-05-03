@@ -14,6 +14,7 @@ enum flags_error {
   FLAGS_ERROR_NAN = 0x4,
   FLAGS_ERROR_NUMBER_OUT_OF_RANGE = 0x8,
   FLAGS_ERROR_NOT_A_BOOL = 0x16,
+  FLAGS_ERROR_ALLOCATION = 0x128,
 };
 
 enum flags_type {
@@ -59,7 +60,9 @@ typedef struct flags_container {
   int argc;
 } flags_context;
 
-void flags_init(flags_context* flags);
+// Initilize the flags context.
+// Returns 0 on success and -1 if on an allocation failure.
+inline int flags_init(flags_context* flags);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_context* flags);
 
@@ -126,7 +129,6 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
-#include <assert.h>
 #include <inttypes.h>
 
 // START OF VARIABLES
@@ -140,7 +142,7 @@ const size_t __flags_error_msg_max_len = 160; // Double the size of a normal ter
 // START OF PRIVATE FUNCTIONS
 
 // Hash a key using the very fast fnv-1a (Fowler-Noll-Vo 1a) non-cryptographic algorithm
-static inline size_t __flags_hash(const char* key) {
+static inline size_t __flags_hash(const char* __restrict key) {
   const size_t offset_basis = 0xcbf29ce484222325;
   const size_t prime = 0x100000001b3;
 
@@ -154,24 +156,20 @@ static inline size_t __flags_hash(const char* key) {
   return accumulator;
 }
 
-static void __flags_realloc(flags_context* flags, size_t capacity) {
+static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
   (void)flags; (void) capacity;
-  // WARN: Assertion with error message
-  assert(false && "Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program");
+  // TODO: Implement realloc of the flags context
+  abort(); // Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program
 }
 
 // TODO: Disallow special characters in flags definition
-void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* value, enum flags_type type, const char* help) {
+void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
 
   flags_item* addr = NULL;
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
-    // TODO: Create a proper crashing function to signal to the user that it
-    // will crash with a certain message
-    // WARN: Assertion with error message
-    assert(flags->items[index].name == NULL || (strcmp(flags->items[index].name, name) == 0 && "Adding the same flag multiple times is not allowed."));
     if (flags->items[index].type == FLAGS_EMPTY) {
       flags->items[index] = (flags_item) {
         .value = value,
@@ -186,7 +184,8 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
     index = (index+1) & (flags->capacity - 1);
   }
 
-  assert(addr != NULL);
+  if (addr == NULL)
+    return NULL;
 
   flags->short_to_long_map[short_name] = addr;
   flags->count += 1;
@@ -194,17 +193,14 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   return &addr->value;
 }
 
-static void __flags_string_list_append(flags_string_list* list, char* value) {
+static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
   // TODO: Handle comma-delimited string lists
-
-  assert(list != NULL);
 
   if (list->count >= list->capacity) {
     list->capacity = list->capacity*2;
     if (list->capacity == 0)
       list->capacity = __flags_initial_string_list_capacity;
     list->content  = realloc(list->content, list->capacity);
-    assert(list->content != NULL);
   }
 
   list->content[list->count] = value;
@@ -237,9 +233,6 @@ static int __flags_append_err(flags_context* flags, const char* restrict format,
 }
 
 static enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
-  assert(item        != NULL);
-  assert(item->value != NULL);
-
   if (value == NULL) {
     __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <number>", item->name);
     return FLAGS_ERROR_VALUE_NOT_PROVIDED;
@@ -287,7 +280,6 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
       goto unknown;
     }
 
-    assert(item->name != NULL);
     if (strcmp(item->name, name) == 0) {
       switch (item->type) {
       case FLAGS_STR:
@@ -332,8 +324,7 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
           return FLAGS_SUCCESS;
         }
       case FLAGS_EMPTY:
-        // WARN: Assertion with error message
-        assert(false && "Unreachable");
+        abort(); // Unreachable
       }
     }
     index = (index+1) & (flags->capacity - 1);
@@ -346,7 +337,7 @@ unknown:
 
 // END OF PRIVATE FUNCTIONS
 
-inline void flags_init(flags_context* flags) {
+int flags_init(flags_context* flags) {
   *flags = (flags_context){
     .items                = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
     // NOTE: Might consider doing this with a dynamic array instead of
@@ -359,8 +350,10 @@ inline void flags_init(flags_context* flags) {
     .error_list           = {0},
   };
 
-  assert(flags->items             != NULL);
-  assert(flags->short_to_long_map != NULL);
+  if (flags->items             == NULL) return -1;
+  if (flags->short_to_long_map == NULL) return -1;
+
+  return 0;
 }
 
 inline void flags_deinit(flags_context* flags) {
@@ -385,22 +378,22 @@ inline void flags_deinit(flags_context* flags) {
 
 char* flags_usage(flags_context* flags) {
   (void)flags;
-  // WARN: Assertion with error message
-  assert(false && "TODO: return the usage for the flags defined");
+  // TODO: Implement usage printing for the flags
+  abort();
 }
 
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
 
   flags->argc = argc;
   flags->argv = malloc(argc * sizeof(char**));
-  assert(flags->argv != NULL);
+  if (flags->argv == NULL) return FLAGS_ERROR_ALLOCATION;
 
   for (int i = 0; i < argc; i += 1) {
     // NOTE: (optimization) We could possible get the length of the string here and store it
     // somewhere for later reuse
     size_t len = strlen(argv[i]) + 1;
     flags->argv[i] = malloc(len);
-    assert(flags->argv[i] != NULL);
+    if (flags->argv[i] == NULL) return FLAGS_ERROR_ALLOCATION;
     memcpy(flags->argv[i], argv[i], len);
   }
 
@@ -447,8 +440,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           }
         }
       } else {
-        // WARN: Assertion with error message
-        assert(false && "TODO: handle short flags");
+        abort(); // TODO: handle short flags
       }
     } else {
       if (args == NULL) continue;
@@ -503,7 +495,7 @@ inline bool* flags_bool(flags_context* flags, const char* name, unsigned char sh
 
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help) {
   flags_string_list* list = malloc(sizeof(flags_string_list));
-  assert(list != NULL);
+  if (list == NULL) return NULL;
   *list = (flags_string_list){0};
   return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, help));
 }

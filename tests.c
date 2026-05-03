@@ -15,7 +15,7 @@ void passing(void) {
 
 int main(int argc, char* argv[]) {
   flags_context flags = {0};
-  flags_init(&flags);
+  assert(flags_init(&flags) == 0);
 
   flags_string_list* skip = flags_multi_str(&flags, "skip", 's', "List of test names to skip");
 
