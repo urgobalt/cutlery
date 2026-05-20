@@ -232,25 +232,27 @@ static int __flags_append_err(flags_context* flags, const char* restrict format,
     return needed;
 }
 
-static enum flags_error __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
+static void __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
   if (value == NULL) {
     __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <number>", item->name);
-    return FLAGS_ERROR_VALUE_NOT_PROVIDED;
+    flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
+    return;
   }
 
   for (size_t i = 0; i < strlen(value); i += 1){
     if (!isdigit(value[i])) {
       __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
-      return FLAGS_ERROR_NAN;
+      flags->error_code |= FLAGS_ERROR_NAN;
+      return;
     }
   }
   long long number = atoll(value);
   if ((intmax_t)number < min || (uintmax_t)number > max) {
     __flags_append_err(flags, "--%s|-%c expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, item->short_name, min, max, number);
-    return FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
+    flags->error_code |= FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
+    return;
   }
   item->value = (void*)(uintptr_t)number;
-  return FLAGS_SUCCESS;
 }
 
 // Returns 1 if true, 0 if false, and -1 if unparsable
@@ -288,37 +290,58 @@ static flags_item* __flags_get_item(flags_context* flags, const char* name) {
 
 flags_unknown:
   __flags_append_err(flags, "Unknown flag. Found: --%s", name);
+  flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
   return NULL;
 }
 
-static inline enum flags_error __flags_update(flags_context* flags, flags_item* flag, char* value) {
+static flags_item* __flags_get_item_from_short(flags_context* flags, const char short_name) {
+  flags_item* item = flags->short_to_long_map[(int)short_name];
+
+  if (item->type == FLAGS_EMPTY) {
+    __flags_append_err(flags, "Unknown flag. Found: -%c", short_name);
+    flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
+    return NULL;
+  }
+
+  return item;
+}
+
+static inline void __flags_update(flags_context* flags, flags_item* flag, char* value) {
   switch (flag->type) {
   case FLAGS_STR:
     flag->value = value;
-    return FLAGS_SUCCESS;
+    return;
   case FLAGS_i8:
-    return __flags_parse_and_assign_number(flags, flag, value, INT8_MIN, INT8_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, INT8_MIN, INT8_MAX);
+    return;
   case FLAGS_i16:
-    return __flags_parse_and_assign_number(flags, flag, value, INT16_MIN, INT16_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, INT16_MIN, INT16_MAX);
+    return;
   case FLAGS_i32:
-    return __flags_parse_and_assign_number(flags, flag, value, INT32_MIN, INT32_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, INT32_MIN, INT32_MAX);
+    return;
   case FLAGS_i64:
-    return __flags_parse_and_assign_number(flags, flag, value, INT64_MIN, INT64_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, INT64_MIN, INT64_MAX);
+    return;
   case FLAGS_u8:
-    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT8_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, 0, UINT8_MAX);
+    return;
   case FLAGS_u16:
-    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT16_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, 0, UINT16_MAX);
+    return;
   case FLAGS_u32:
-    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT32_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, 0, UINT32_MAX);
+    return;
   case FLAGS_u64:
-    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT64_MAX);
+    __flags_parse_and_assign_number(flags, flag, value, 0, UINT64_MAX);
+    return;
   case FLAGS_MULTI_STR:
     // TODO: Handle comma-delimited string lists
     __flags_string_list_append(flag->value, value);
-    return FLAGS_SUCCESS;
+    return;
   default:
     __flags_append_err(flags, "%s:%zu: Internal library error, unhandled type '%s'", __FILE__, __LINE__, flag->type_hint);
-    return FLAGS_ERROR_LIBRARY_IMPLEMENTATION;
+    flags->error_code |= FLAGS_ERROR_LIBRARY_IMPLEMENTATION;
   }
 }
 
@@ -390,10 +413,11 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
     char* raw_flag_string = flags->argv[argument_index];
 
     if (raw_flag_string[0] == flag_marker) {
-      if (raw_flag_string[1] == flag_marker) {
+      char* value = NULL;
+      flags_item* flag = NULL;
 
+      if (raw_flag_string[1] == flag_marker) {
         size_t character_index = 2;
-        char* value = NULL;
 
         while (raw_flag_string[character_index] != '\0') {
           if (raw_flag_string[character_index] == '=') {
@@ -404,42 +428,68 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           character_index += 1;
         }
 
-        flags_item* flag = __flags_get_item(flags, raw_flag_string+2);
+        flag = __flags_get_item(flags, raw_flag_string+2);
+
+        if (flag == NULL)
+          continue;
 
         if (flag->type == FLAGS_BOOL) {
           if (value == NULL) {
             flag->value = (void*)true;
           } else {
             int boolean_value = __flags_parse_bool(value);
+
             if (boolean_value == -1) {
               __flags_append_err(flags, "Expected boolean value for flag --%s, found: %s", raw_flag_string, value);
               flags->error_code |= FLAGS_ERROR_NOT_A_BOOL;
               continue;
             }
+
             flag->value = (void*)(intptr_t)boolean_value;
           }
         }
 
-        if (value == NULL && argument_index < (argc - 1)) {
-          argument_index += 1;
-          value = flags->argv[argument_index];
-          if (*value == '-') {
-            argument_index -= 1;
-            goto flags_value_not_provided;
-          }
-        }
-
-        if (value == NULL) {
-          flags_value_not_provided:
-          __flags_append_err(flags, "Value not provided. Expected: --%s <%s>", flag->name, flag->type_hint);
-          flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
-          continue;
-        }
-
-        flags->error_code |= __flags_update(flags, flag, value);
       } else {
-        abort(); // TODO: handle short flags
+        size_t character_index = 1;
+        while (raw_flag_string[character_index] != '\0') {
+          if (raw_flag_string[character_index] == '=') {
+            raw_flag_string[character_index] = '\0';
+            value = &raw_flag_string[character_index+1];
+            break;
+          }
+
+          flag = __flags_get_item_from_short(flags, raw_flag_string[character_index]);
+
+          if (flag == NULL)
+            continue;
+
+          if (flag->type == FLAGS_BOOL)
+            flag->value = (void*)(uintptr_t)true;
+
+          character_index += 1;
+        }
+
+        if (flag->type == FLAGS_BOOL)
+          continue;
       }
+
+      if (value == NULL && argument_index < (argc - 1)) {
+        argument_index += 1;
+        value = flags->argv[argument_index];
+        if (*value == '-') {
+          argument_index -= 1;
+          goto flags_value_not_provided;
+        }
+      }
+
+      if (value == NULL) {
+      flags_value_not_provided:
+        __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <%s>", flag->name, flag->short_name, flag->type_hint);
+        flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
+        continue;
+      }
+
+      __flags_update(flags, flag, value);
     } else {
       if (args == NULL) continue;
       __flags_string_list_append(args, flags->argv[argument_index]);
