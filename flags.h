@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <limits.h>
 
-// TODO: Make multi-error viable
 enum flags_error {
   FLAGS_SUCCESS = 0,
   FLAGS_ERROR_UNKNOWN_FLAG = 0x1,
@@ -197,13 +196,11 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
 }
 
 static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
-  // TODO: Handle comma-delimited string lists
-
   if (list->count >= list->capacity) {
     list->capacity = list->capacity*2;
     if (list->capacity == 0)
       list->capacity = __flags_initial_string_list_capacity;
-    list->content  = realloc(list->content, list->capacity);
+    list->content  = realloc(list->content, list->capacity * sizeof(char**));
   }
 
   list->content[list->count] = value;
@@ -279,7 +276,7 @@ static flags_item* __flags_get_item(flags_context* flags, const char* name) {
     flags_item* item = &flags->items[index];
 
     if (item->type == FLAGS_EMPTY) {
-      goto unknown;
+      goto flags_unknown;
     }
 
     if (strcmp(item->name, name) == 0) {
@@ -289,7 +286,7 @@ static flags_item* __flags_get_item(flags_context* flags, const char* name) {
     index = (index+1) & (flags->capacity - 1);
   }
 
-unknown:
+flags_unknown:
   __flags_append_err(flags, "Unknown flag. Found: --%s", name);
   return NULL;
 }
@@ -316,6 +313,7 @@ static inline enum flags_error __flags_update(flags_context* flags, flags_item* 
   case FLAGS_u64:
     return __flags_parse_and_assign_number(flags, flag, value, 0, UINT64_MAX);
   case FLAGS_MULTI_STR:
+    // TODO: Handle comma-delimited string lists
     __flags_string_list_append(flag->value, value);
     return FLAGS_SUCCESS;
   default:
@@ -391,8 +389,6 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
 
     char* raw_flag_string = flags->argv[argument_index];
 
-    printf("name: %s\n", raw_flag_string);
-
     if (raw_flag_string[0] == flag_marker) {
       if (raw_flag_string[1] == flag_marker) {
 
@@ -424,14 +420,20 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           }
         }
 
-        if (value == NULL && argument_index < (flags->argc - 1)) {
+        if (value == NULL && argument_index < (argc - 1)) {
           argument_index += 1;
           value = flags->argv[argument_index];
+          if (*value == '-') {
+            argument_index -= 1;
+            goto flags_value_not_provided;
+          }
         }
 
         if (value == NULL) {
+          flags_value_not_provided:
           __flags_append_err(flags, "Value not provided. Expected: --%s <%s>", flag->name, flag->type_hint);
           flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
+          continue;
         }
 
         flags->error_code |= __flags_update(flags, flag, value);
