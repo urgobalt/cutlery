@@ -14,6 +14,7 @@ enum flags_error {
   FLAGS_ERROR_NAN = 0x4,
   FLAGS_ERROR_NUMBER_OUT_OF_RANGE = 0x8,
   FLAGS_ERROR_NOT_A_BOOL = 0x16,
+  FLAGS_ERROR_LIBRARY_IMPLEMENTATION = 0x64,
   FLAGS_ERROR_ALLOCATION = 0x128,
 };
 
@@ -42,6 +43,7 @@ typedef struct flags_item {
   void* value;
   const char* name;
   const char* help;
+  const char* type_hint;
   enum flags_type type;
   unsigned char short_name;
 } flags_item;
@@ -163,7 +165,7 @@ static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
 }
 
 // TODO: Disallow special characters in flags definition
-void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* help) {
+void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* type_hint, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
 
@@ -177,6 +179,7 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
         .short_name = short_name,
         .help = help,
         .type = type,
+        .type_hint = type_hint,
       };
       addr = &flags->items[index];
       break;
@@ -270,8 +273,7 @@ static int __flags_parse_bool(const char* value) {
   return -1;
 }
 
-// TODO: make value a double pointer to modify within the function
-static enum flags_error __flags_update(flags_context* flags, const char* name, char* value) {
+static flags_item* __flags_get_item(flags_context* flags, const char* name) {
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
@@ -281,58 +283,45 @@ static enum flags_error __flags_update(flags_context* flags, const char* name, c
     }
 
     if (strcmp(item->name, name) == 0) {
-      switch (item->type) {
-      case FLAGS_STR:
-        if (value == NULL) {
-          __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <string>", item->name, item->short_name);
-          return FLAGS_ERROR_VALUE_NOT_PROVIDED;
-        }
-        item->value = value;
-        return FLAGS_SUCCESS;
-      case FLAGS_i8:
-        return __flags_parse_and_assign_number(flags, item, value, INT8_MIN, INT8_MAX);
-      case FLAGS_i16:
-        return __flags_parse_and_assign_number(flags, item, value, INT16_MIN, INT16_MAX);
-      case FLAGS_i32:
-        return __flags_parse_and_assign_number(flags, item, value, INT32_MIN, INT32_MAX);
-      case FLAGS_i64:
-        return __flags_parse_and_assign_number(flags, item, value, INT64_MIN, INT64_MAX);
-      case FLAGS_u8:
-        return __flags_parse_and_assign_number(flags, item, value, 0, UINT8_MAX);
-      case FLAGS_u16:
-        return __flags_parse_and_assign_number(flags, item, value, 0, UINT16_MAX);
-      case FLAGS_u32:
-        return __flags_parse_and_assign_number(flags, item, value, 0, UINT32_MAX);
-      case FLAGS_u64:
-        return __flags_parse_and_assign_number(flags, item, value, 0, UINT64_MAX);
-      case FLAGS_MULTI_STR:
-        if (value == NULL) {
-          __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <string>", item->name, item->short_name);
-          return FLAGS_ERROR_VALUE_NOT_PROVIDED;
-        }
-        __flags_string_list_append(item->value, value);
-        return FLAGS_SUCCESS;
-      // TODO: Consider pulling this out into the parent function to simplify
-      // logic
-      case FLAGS_BOOL: {
-          int boolean_value = __flags_parse_bool(value);
-          if (boolean_value == -1) {
-            item->value = (void*)true;
-            return FLAGS_ERROR_NOT_A_BOOL;
-          }
-          item->value = (void*)(intptr_t)boolean_value;
-          return FLAGS_SUCCESS;
-        }
-      case FLAGS_EMPTY:
-        abort(); // Unreachable
-      }
+      return item;
     }
+
     index = (index+1) & (flags->capacity - 1);
   }
 
 unknown:
   __flags_append_err(flags, "Unknown flag. Found: --%s", name);
-  return FLAGS_ERROR_UNKNOWN_FLAG;
+  return NULL;
+}
+
+static inline enum flags_error __flags_update(flags_context* flags, flags_item* flag, char* value) {
+  switch (flag->type) {
+  case FLAGS_STR:
+    flag->value = value;
+    return FLAGS_SUCCESS;
+  case FLAGS_i8:
+    return __flags_parse_and_assign_number(flags, flag, value, INT8_MIN, INT8_MAX);
+  case FLAGS_i16:
+    return __flags_parse_and_assign_number(flags, flag, value, INT16_MIN, INT16_MAX);
+  case FLAGS_i32:
+    return __flags_parse_and_assign_number(flags, flag, value, INT32_MIN, INT32_MAX);
+  case FLAGS_i64:
+    return __flags_parse_and_assign_number(flags, flag, value, INT64_MIN, INT64_MAX);
+  case FLAGS_u8:
+    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT8_MAX);
+  case FLAGS_u16:
+    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT16_MAX);
+  case FLAGS_u32:
+    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT32_MAX);
+  case FLAGS_u64:
+    return __flags_parse_and_assign_number(flags, flag, value, 0, UINT64_MAX);
+  case FLAGS_MULTI_STR:
+    __flags_string_list_append(flag->value, value);
+    return FLAGS_SUCCESS;
+  default:
+    __flags_append_err(flags, "%s:%zu: Internal library error, unhandled type '%s'", __FILE__, __LINE__, flag->type_hint);
+    return FLAGS_ERROR_LIBRARY_IMPLEMENTATION;
+  }
 }
 
 // END OF PRIVATE FUNCTIONS
@@ -383,13 +372,12 @@ char* flags_usage(flags_context* flags) {
 }
 
 enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
-
   flags->argc = argc;
   flags->argv = malloc(argc * sizeof(char**));
   if (flags->argv == NULL) return FLAGS_ERROR_ALLOCATION;
 
   for (int i = 0; i < argc; i += 1) {
-    // NOTE: (optimization) We could possible get the length of the string here and store it
+    // OPTIMIZATION: We could possible get the length of the string here and store it
     // somewhere for later reuse
     size_t len = strlen(argv[i]) + 1;
     flags->argv[i] = malloc(len);
@@ -401,25 +389,39 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
 
   for (int argument_index = 0; argument_index < argc; argument_index += 1) {
 
-    char* name = flags->argv[argument_index];
+    char* raw_flag_string = flags->argv[argument_index];
 
-    printf("name: %s\n", name);
+    printf("name: %s\n", raw_flag_string);
 
-    if (name[0] == flag_marker) {
-      if (name[1] == flag_marker) {
+    if (raw_flag_string[0] == flag_marker) {
+      if (raw_flag_string[1] == flag_marker) {
 
         size_t character_index = 2;
         char* value = NULL;
-        bool explicit_assignment = false;
 
-        while (name[character_index] != '\0') {
-          if (name[character_index] == '=') {
-            name[character_index] = '\0';
-            value = &name[character_index+1];
-            explicit_assignment = true;
+        while (raw_flag_string[character_index] != '\0') {
+          if (raw_flag_string[character_index] == '=') {
+            raw_flag_string[character_index] = '\0';
+            value = &raw_flag_string[character_index+1];
             break;
           }
           character_index += 1;
+        }
+
+        flags_item* flag = __flags_get_item(flags, raw_flag_string+2);
+
+        if (flag->type == FLAGS_BOOL) {
+          if (value == NULL) {
+            flag->value = (void*)true;
+          } else {
+            int boolean_value = __flags_parse_bool(value);
+            if (boolean_value == -1) {
+              __flags_append_err(flags, "Expected boolean value for flag --%s, found: %s", raw_flag_string, value);
+              flags->error_code |= FLAGS_ERROR_NOT_A_BOOL;
+              continue;
+            }
+            flag->value = (void*)(intptr_t)boolean_value;
+          }
         }
 
         if (value == NULL && argument_index < (flags->argc - 1)) {
@@ -427,18 +429,12 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
           value = flags->argv[argument_index];
         }
 
-        enum flags_error error = __flags_update(flags, name+2, value);
-        if (error != 0) {
-          if (error == FLAGS_ERROR_NOT_A_BOOL && !explicit_assignment) {
-            argument_index -= 1;
-          } else {
-            flags->error_code |= error;
-          }
-
-          if (error == FLAGS_ERROR_UNKNOWN_FLAG) {
-            argument_index -= 1;
-          }
+        if (value == NULL) {
+          __flags_append_err(flags, "Value not provided. Expected: --%s <%s>", flag->name, flag->type_hint);
+          flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
         }
+
+        flags->error_code |= __flags_update(flags, flag, value);
       } else {
         abort(); // TODO: handle short flags
       }
@@ -452,52 +448,52 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
 }
 
 inline int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i8, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i8, "number", help);
 }
 
 inline int16_t* flags_i16(flags_context* flags, const char* name, unsigned char short_name, int16_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i16, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i16, "number", help);
 }
 
 inline int32_t* flags_i32(flags_context* flags, const char* name, unsigned char short_name, int32_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i32, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_i32, "number", help);
 }
 
 inline int64_t* flags_i64(flags_context* flags, const char* name, unsigned char short_name, int64_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_i64, help);
+  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_i64, "number", help);
 }
 
 inline uint8_t * flags_u8 (flags_context* flags, const char* name, unsigned char short_name, uint8_t  value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u8, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u8, "positive number", help);
 }
 
 inline uint16_t* flags_u16(flags_context* flags, const char* name, unsigned char short_name, uint16_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u16, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u16, "positive number", help);
 }
 
 inline uint32_t* flags_u32(flags_context* flags, const char* name, unsigned char short_name, uint32_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u32, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_u32, "positive number", help);
 }
 
 inline uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char short_name, uint64_t value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_u64, help);
+  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_u64, "positive number", help);
 }
 
 inline char* flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_STR, help);
+  return __flags_insert(flags, name, short_name, (void*)value, FLAGS_STR, "string", help);
 }
 
 // TODO: Implmentation of required functionality
 
 inline bool* flags_bool(flags_context* flags, const char* name, unsigned char short_name, bool value, const char* help) {
-  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_BOOL, help);
+  return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_BOOL, "boolean", help);
 }
 
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help) {
   flags_string_list* list = malloc(sizeof(flags_string_list));
   if (list == NULL) return NULL;
   *list = (flags_string_list){0};
-  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, help));
+  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, "list of strings", help));
 }
 
 #endif // FLAGS_IMPLEMENTATION
