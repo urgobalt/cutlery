@@ -131,6 +131,7 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 #include <ctype.h>
 #include <string.h>
 #include <inttypes.h>
+#include <errno.h>
 
 // START OF VARIABLES
 
@@ -233,23 +234,37 @@ static int __flags_append_err(flags_context* flags, const char* restrict format,
     return needed;
 }
 
-// BUG: atoll not handling u64 size numbers, last bit is always going to be excluded
-// BUG: negative numbers not being parsed correctly and does not enter this function
-static void __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
-  for (size_t i = 0; i < strlen(value); i += 1){
-    if (!isdigit(value[i])) {
-      __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
-      flags->error_code |= FLAGS_ERROR_NAN;
-      return;
-    }
-  }
+static void __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, intmax_t max) {
+  errno = 0;
+  intmax_t number = strtoimax(value, NULL, 10);
 
-  long long number = atoll(value);
-  if ((intmax_t)number < min || (uintmax_t)number > max) {
-    __flags_append_err(flags, "--%s|-%c expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, item->short_name, min, max, number);
+  if (number < min || number > max || errno == ERANGE) {
+    __flags_append_err(flags, "--%s|-%c expects a number between %" PRIiMAX " and " PRIiMAX ", found " PRIiMAX, item->name, item->short_name, min, max, number);
     flags->error_code |= FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
     return;
+  } else if (errno == EINVAL) {
+    __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
+    flags->error_code |= FLAGS_ERROR_NAN;
+    return;
   }
+
+  item->value = (void*)(uintptr_t)number;
+}
+
+static void __flags_parse_and_assign_unsigned_number(flags_context* flags, flags_item* item, const char* value, uintmax_t max) {
+  errno = 0;
+  uintmax_t number = strtoumax(value, NULL, 10);
+
+  if (number > max || errno == ERANGE) {
+    __flags_append_err(flags, "--%s|-%c expects a number below %" PRIuMAX ", found " PRIuMAX, item->name, item->short_name, max, number);
+    flags->error_code |= FLAGS_ERROR_NUMBER_OUT_OF_RANGE;
+    return;
+  } else if (errno == EINVAL) {
+    __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
+    flags->error_code |= FLAGS_ERROR_NAN;
+    return;
+  }
+
   item->value = (void*)(uintptr_t)number;
 }
 
@@ -323,16 +338,16 @@ static inline void __flags_update(flags_context* flags, flags_item* flag, char* 
     __flags_parse_and_assign_number(flags, flag, value, INT64_MIN, INT64_MAX);
     return;
   case FLAGS_u8:
-    __flags_parse_and_assign_number(flags, flag, value, 0, UINT8_MAX);
+    __flags_parse_and_assign_unsigned_number(flags, flag, value, UINT8_MAX);
     return;
   case FLAGS_u16:
-    __flags_parse_and_assign_number(flags, flag, value, 0, UINT16_MAX);
+    __flags_parse_and_assign_unsigned_number(flags, flag, value, UINT16_MAX);
     return;
   case FLAGS_u32:
-    __flags_parse_and_assign_number(flags, flag, value, 0, UINT32_MAX);
+    __flags_parse_and_assign_unsigned_number(flags, flag, value, UINT32_MAX);
     return;
   case FLAGS_u64:
-    __flags_parse_and_assign_number(flags, flag, value, 0, UINT64_MAX);
+    __flags_parse_and_assign_unsigned_number(flags, flag, value, UINT64_MAX);
     return;
   case FLAGS_MULTI_STR:
     // TODO: Handle comma-delimited string lists

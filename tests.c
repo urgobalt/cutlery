@@ -58,7 +58,7 @@ void bool_flags(void) {
 }
 
 void integer_flags(void) {
-  const size_t argc = 4;
+  const size_t argc = 5;
   const char* argv[] = {"program", "--i8", "5", "--i32=9", "--i64=-128"};
 
   flags_context flags = {0};
@@ -71,6 +71,8 @@ void integer_flags(void) {
   flags_parse_with_output(&flags, NULL, argc, (char**)argv);
 
   assert(flags.error_code == 0);
+
+  printf("%zu\n", *i64);
 
   assert(*i8 == 5);
   assert(*i32 == 9);
