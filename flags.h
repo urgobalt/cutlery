@@ -233,13 +233,9 @@ static int __flags_append_err(flags_context* flags, const char* restrict format,
     return needed;
 }
 
+// BUG: atoll not handling u64 size numbers, last bit is always going to be excluded
+// BUG: negative numbers not being parsed correctly and does not enter this function
 static void __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, uintmax_t max) {
-  if (value == NULL) {
-    __flags_append_err(flags, "Value not provided. Expected: --%s|-%c <number>", item->name);
-    flags->error_code |= FLAGS_ERROR_VALUE_NOT_PROVIDED;
-    return;
-  }
-
   for (size_t i = 0; i < strlen(value); i += 1){
     if (!isdigit(value[i])) {
       __flags_append_err(flags, "Not a number. Expected: --%s|-%c <number>", item->name, value);
@@ -247,6 +243,7 @@ static void __flags_parse_and_assign_number(flags_context* flags, flags_item* it
       return;
     }
   }
+
   long long number = atoll(value);
   if ((intmax_t)number < min || (uintmax_t)number > max) {
     __flags_append_err(flags, "--%s|-%c expects a number between %" PRIiMAX " and %" PRIiMAX ", found %lld", item->name, item->short_name, min, max, number);
