@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #define TEST_IMPLEMENTATION
 #define FLAGS_IMPLEMENTATION
 
@@ -58,7 +59,7 @@ void bool_flags(void) {
 
 void integer_flags(void) {
   const size_t argc = 4;
-  const char* args[] = {"program", "--i8", "5", "--i32=9", "--i64=-128"};
+  const char* argv[] = {"program", "--i8", "5", "--i32=9", "--i64=-128"};
 
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -67,7 +68,7 @@ void integer_flags(void) {
   int32_t* i32 = flags_i32(&flags, "i32", '\0', 0, "");
   int64_t* i64 = flags_i64(&flags, "i64", '\0', 0, "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)args);
+  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
 
   assert(flags.error_code == 0);
 
@@ -80,7 +81,7 @@ void integer_flags(void) {
 
 void unsigned_integer_flags(void) {
   const size_t argc = 4;
-  const char* args[] = {"program", "--u8", "5", "--u32=9"};
+  const char* argv[] = {"program", "--u8", "5", "--u32=9"};
 
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -88,12 +89,36 @@ void unsigned_integer_flags(void) {
   uint8_t* u8 = flags_u8(&flags, "u8", '\0', 0, "");
   uint32_t* u32 = flags_u32(&flags, "u32", '\0', 0, "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)args);
+  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
 
   assert(flags.error_code == 0);
 
   assert(*u8 == 5);
   assert(*u32 == 9);
+
+  flags_deinit(&flags);
+}
+
+void string_flags(void) {
+  const size_t argc = 7;
+  const char* argv[] = {"program", "--str", "hello_world", "--streq=hello", "-s", "world", "-d=hhhh"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  char** str = flags_str(&flags, "str", '\0', "", "");
+  char** streq = flags_str(&flags, "streq", '\0', "", "");
+  char** strs = flags_str(&flags, "strs", 's', "", "");
+  char** strd = flags_str(&flags, "strd", 'd', "", "");
+
+  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+
+  assert(flags.error_code == 0);
+
+  assert(strcmp(*str, "hello_world") == 0);
+  assert(strcmp(*streq, "hello") == 0);
+  assert(strcmp(*strs, "world") == 0);
+  assert(strcmp(*strd, "hhhh") == 0);
 
   flags_deinit(&flags);
 }
@@ -115,13 +140,16 @@ int main(int argc, char* argv[]) {
 
   test_context context = test_init();
 
+  // meta tests for testing framework
   test_register(&context, "expect_failing", &failing, true);
   test_register(&context, "failing", &failing, false);
   test_register(&context, "passing", &passing, false);
 
+  // tests for flags library
   test_register(&context, "bool_flags", &bool_flags, false);
   test_register(&context, "integer_flags", &integer_flags, false);
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
+  test_register(&context, "string_flags", &string_flags, false);
 
   test_skip(&context, "failing");
 

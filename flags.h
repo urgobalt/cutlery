@@ -91,7 +91,7 @@ uint32_t* flags_u32(flags_context* flags, const char* name, unsigned char short_
 uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char short_name, uint64_t value, const char* help);
 
 // Define a string flag with default value
-char* flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help);
+char** flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help);
 
 // Define a numeric flag of with the size of 1 byte / int8_t
 int8_t * flags_required_i8 (flags_context* flags, const char* name, unsigned char short_name, const char* help);
@@ -112,7 +112,7 @@ uint32_t* flags_required_u32(flags_context* flags, const char* name, unsigned ch
 uint64_t* flags_required_u64(flags_context* flags, const char* name, unsigned char short_name, const char* help);
 
 // Define a string flag
-char* flags_required_str(flags_context* flags, const char* name, unsigned char short_name, const char* help);
+char** flags_required_str(flags_context* flags, const char* name, unsigned char short_name, const char* help);
 
 // Define a boolean flag with default value
 bool* flags_bool(flags_context* flags, const char* name, unsigned char short_name, bool value, const char* help);
@@ -530,7 +530,7 @@ inline uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char
   return __flags_insert(flags, name, short_name, (void*)value, FLAGS_u64, "positive number", help);
 }
 
-inline char* flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help) {
+inline char** flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help) {
   return __flags_insert(flags, name, short_name, (void*)value, FLAGS_STR, "string", help);
 }
 
