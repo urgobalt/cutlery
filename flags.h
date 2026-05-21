@@ -47,7 +47,7 @@ typedef struct flags_item {
   unsigned char short_name;
 } flags_item;
 
-typedef struct flags_container {
+typedef struct flags_context {
   // Content
   flags_item* items;
   flags_item** short_to_long_map;
@@ -68,8 +68,16 @@ inline int flags_init(flags_context* flags);
 void flags_deinit(flags_context* flags);
 
 char* flags_usage(flags_context* flags);
-int flags_collect_errors(const flags_context* flags, flags_string_list* error_list);
 
+// The function assumes that `flags_init` has been executed before parsing.
+// `argv` is copied into an internal structure to avoid writeability problems
+// and undefined mutation of the external arguments.
+//
+// Error reporting is done by setting betwise flags using `flags_context` member
+// `error_code`. Error messages is also stored within `flags_context` member
+// `error_list` which is a list of strings.
+//
+// Please refer to the tests for example usage.
 void flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
