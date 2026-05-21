@@ -128,6 +128,7 @@ int main(int argc, char* argv[]) {
   assert(flags_init(&flags) == 0);
 
   flags_string_list* skip = flags_multi_str(&flags, "skip", 's', "List of test names to skip");
+  bool* meta_tests = flags_bool(&flags, "meta-tests", 'm', false, "Enable meta tests for the testing framework");
 
   int err;
   if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
@@ -141,9 +142,13 @@ int main(int argc, char* argv[]) {
   test_context context = test_init();
 
   // meta tests for testing framework
-  test_register(&context, "expect_failing", &failing, true);
-  test_register(&context, "failing", &failing, false);
-  test_register(&context, "passing", &passing, false);
+  if (*meta_tests) {
+    test_register(&context, "expect_failing", &failing, true);
+    test_register(&context, "failing", &failing, false);
+    test_register(&context, "passing", &passing, false);
+
+    test_skip(&context, "failing");
+  }
 
   // tests for flags library
   test_register(&context, "bool_flags", &bool_flags, false);
@@ -151,7 +156,6 @@ int main(int argc, char* argv[]) {
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
   test_register(&context, "string_flags", &string_flags, false);
 
-  test_skip(&context, "failing");
 
   for (size_t i = 0; i < skip->count; i += 1) {
     test_skip(&context, skip->content[i]);
