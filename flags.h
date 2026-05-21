@@ -164,6 +164,7 @@ static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
 }
 
 // TODO: Disallow special characters in flags definition
+// TODO: Sanitize name (disallow spaces especially)
 void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* type_hint, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
@@ -447,6 +448,7 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
 
             flag->value = (void*)(intptr_t)boolean_value;
           }
+          continue;
         }
 
       } else {
