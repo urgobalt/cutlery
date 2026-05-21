@@ -123,6 +123,27 @@ void string_flags(void) {
   flags_deinit(&flags);
 }
 
+void multi_string_flags(void) {
+  const size_t argc = 7;
+  const char* argv[] = {"program", "--strings", "hello", "--strings=world", "-s", "again", "-s=there"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  flags_string_list* strings = flags_multi_str(&flags, "strings", 's', "");
+
+  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+
+  assert(flags.error_code == 0);
+
+  assert(strcmp(strings->content[0], "hello") == 0);
+  assert(strcmp(strings->content[1], "world") == 0);
+  assert(strcmp(strings->content[2], "again") == 0);
+  assert(strcmp(strings->content[3], "there") == 0);
+
+  flags_deinit(&flags);
+}
+
 int main(int argc, char* argv[]) {
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -155,6 +176,7 @@ int main(int argc, char* argv[]) {
   test_register(&context, "integer_flags", &integer_flags, false);
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
   test_register(&context, "string_flags", &string_flags, false);
+  test_register(&context, "multi_string_flags", &multi_string_flags, false);
 
 
   for (size_t i = 0; i < skip->count; i += 1) {

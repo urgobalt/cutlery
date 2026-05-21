@@ -304,6 +304,7 @@ static flags_item* __flags_get_item_from_short(flags_context* flags, const char 
   return item;
 }
 
+// WARN: This function does not handle boolean flags
 static inline void __flags_update(flags_context* flags, flags_item* flag, char* value) {
   switch (flag->type) {
   case FLAGS_STR:
