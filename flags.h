@@ -70,7 +70,7 @@ void flags_deinit(flags_context* flags);
 char* flags_usage(flags_context* flags);
 int flags_collect_errors(const flags_context* flags, flags_string_list* error_list);
 
-enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
+void flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
 int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
@@ -391,17 +391,27 @@ char* flags_usage(flags_context* flags) {
   abort();
 }
 
-enum flags_error flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
+void flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
   flags->argc = argc;
   flags->argv = malloc(argc * sizeof(char**));
-  if (flags->argv == NULL) return FLAGS_ERROR_ALLOCATION;
+
+  if (flags->argv == NULL) {
+    flags->error_code |= FLAGS_ERROR_ALLOCATION;
+    return;
+  }
 
   for (int i = 0; i < argc; i += 1) {
     // OPTIMIZATION: We could possible get the length of the string here and store it
     // somewhere for later reuse
     size_t len = strlen(argv[i]) + 1;
+
     flags->argv[i] = malloc(len);
-    if (flags->argv[i] == NULL) return FLAGS_ERROR_ALLOCATION;
+
+    if (flags->argv[i] == NULL) {
+      flags->error_code |= FLAGS_ERROR_ALLOCATION;
+      return;
+    }
+
     memcpy(flags->argv[i], argv[i], len);
   }
 
@@ -495,8 +505,6 @@ enum flags_error flags_parse(flags_context* flags, flags_string_list* args, cons
       __flags_string_list_append(args, flags->argv[argument_index]);
     }
   }
-
-  return flags->error_code;
 }
 
 inline int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help) {

@@ -151,8 +151,8 @@ int main(int argc, char* argv[]) {
   flags_string_list* skip = flags_multi_str(&flags, "skip", 's', "List of test names to skip");
   bool* meta_tests = flags_bool(&flags, "meta-tests", 'm', false, "Enable meta tests for the testing framework");
 
-  int err;
-  if ((err = flags_parse(&flags, NULL, argc, argv)) != 0) {
+  flags_parse(&flags, NULL, argc, argv);
+  if (flags.error_code != 0) {
     printf("Flag parse error:\n");
     for (size_t i = 0; i < flags.error_list.count; i += 1) {
       printf("%s\n", flags.error_list.content[i]);
