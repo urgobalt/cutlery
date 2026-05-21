@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define TEST_IMPLEMENTATION
 #define FLAGS_IMPLEMENTATION
 
@@ -17,9 +18,11 @@ void passing(void) {
 void flags_parse_with_output(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
   flags_parse(flags, args, argc, argv);
 
-  fprintf(stderr, "Flag parse error:\n");
-  for (size_t i = 0; i < flags->error_list.count; i += 1) {
-    fprintf(stderr, "%s\n", flags->error_list.content[i]);
+  if (flags->error_code != 0) {
+    fprintf(stderr, "Flag parse error:\n");
+    for (size_t i = 0; i < flags->error_list.count; i += 1) {
+      fprintf(stderr, "%s\n", flags->error_list.content[i]);
+    }
   }
 }
 
@@ -40,6 +43,8 @@ void bool_flags(void) {
 
   flags_parse_with_output(&flags, NULL, argc, (char**)args);
 
+  assert(flags.error_code == 0);
+
   assert(*feature == true);
   assert(*other   == false);
   assert(*other2  == false);
@@ -47,6 +52,48 @@ void bool_flags(void) {
   assert(*tother2 == true);
   assert(*s       == true);
   assert(*d       == true);
+
+  flags_deinit(&flags);
+}
+
+void integer_flags(void) {
+  const size_t argc = 4;
+  const char* args[] = {"program", "--i8", "5", "--i32=9", "--i64=-128"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  int8_t* i8 = flags_i8(&flags, "i8", '\0', 0, "");
+  int32_t* i32 = flags_i32(&flags, "i32", '\0', 0, "");
+  int64_t* i64 = flags_i64(&flags, "i64", '\0', 0, "");
+
+  flags_parse_with_output(&flags, NULL, argc, (char**)args);
+
+  assert(flags.error_code == 0);
+
+  assert(*i8 == 5);
+  assert(*i32 == 9);
+  assert(*i64 == -128);
+
+  flags_deinit(&flags);
+}
+
+void unsigned_integer_flags(void) {
+  const size_t argc = 4;
+  const char* args[] = {"program", "--u8", "5", "--u32=9"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  uint8_t* u8 = flags_u8(&flags, "u8", '\0', 0, "");
+  uint32_t* u32 = flags_u32(&flags, "u32", '\0', 0, "");
+
+  flags_parse_with_output(&flags, NULL, argc, (char**)args);
+
+  assert(flags.error_code == 0);
+
+  assert(*u8 == 5);
+  assert(*u32 == 9);
 
   flags_deinit(&flags);
 }
@@ -73,6 +120,8 @@ int main(int argc, char* argv[]) {
   test_register(&context, "passing", &passing, false);
 
   test_register(&context, "bool_flags", &bool_flags, false);
+  test_register(&context, "integer_flags", &integer_flags, false);
+  test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
 
   test_skip(&context, "failing");
 
