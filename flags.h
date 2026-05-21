@@ -1,5 +1,5 @@
-#ifndef FLAGS_H
-#define FLAGS_H
+#ifndef FLAGS_H_
+#define FLAGS_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -121,7 +121,7 @@ bool* flags_bool(flags_context* flags, const char* name, unsigned char short_nam
 // WARN: If not flags are provided, then the content will be NULL
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help);
 
-#endif // FLAGS_H
+#endif // FLAGS_H_
 
 #ifdef FLAGS_IMPLEMENTATION
 
