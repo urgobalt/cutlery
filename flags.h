@@ -15,6 +15,7 @@ enum flags_error {
   FLAGS_ERROR_NOT_A_BOOL = 0x16,
   FLAGS_ERROR_LIBRARY_IMPLEMENTATION = 0x64,
   FLAGS_ERROR_ALLOCATION = 0x128,
+  FLAGS_ERROR_INVALID_NAME = 0x256,
 };
 
 enum flags_type {
@@ -172,11 +173,78 @@ static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
   abort(); // Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program
 }
 
-// TODO: Disallow special characters in flags definition
-// TODO: Sanitize name (disallow spaces especially)
+bool __flags_validate_character(const char character) {
+  char* special_characters = "-_+?";
+
+  while (*special_characters != '\0') {
+    if (*special_characters == character)
+      return true;
+
+    special_characters += 1;
+  }
+
+  if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z'))
+    return true;
+
+  return false;
+}
+
+static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
+  if (list->count >= list->capacity) {
+    list->capacity = list->capacity*2;
+    if (list->capacity == 0)
+      list->capacity = __flags_initial_string_list_capacity;
+    list->content  = realloc(list->content, list->capacity * sizeof(char**));
+  }
+
+  list->content[list->count] = value;
+  list->count += 1;
+}
+
+// Append an error onto the flag context's error list
+static int __flags_append_err(flags_context* flags, const char* __restrict format, ...) {
+    va_list args, args_copy;
+    va_start(args, format);
+    va_copy(args_copy, args);
+
+    int needed = vsnprintf(NULL, 0, format, args);
+    char* buffer = malloc(needed + 1);
+
+    if (buffer == NULL) {
+        va_end(args);
+        va_end(args_copy);
+        return -1;
+    }
+
+    vsprintf(buffer, format, args_copy);
+
+    va_end(args_copy);
+    va_end(args);
+
+    __flags_string_list_append(&flags->error_list, buffer);
+
+    return needed;
+}
+
 void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* type_hint, const char* help) {
   if (flags->count >= flags->capacity)
     __flags_realloc(flags, flags->capacity*2);
+
+  for (size_t i = 0; name[i] != '\0'; i++) {
+    if (__flags_validate_character(*name) == false) {
+      __flags_append_err(flags, "Unexpected character '%c' in flag name '%s'", name[i], name);
+      flags->error_code |= FLAGS_ERROR_INVALID_NAME;
+      return NULL;
+    }
+  }
+
+  // TODO: Enable the following sanitization when null handling of short_name is complete
+
+  // if (__flags_validate_character(short_name) == false) {
+  //   __flags_append_err(flags, "Unexpected character '%c' used as short_name for a flag", short_name);
+  //   flags->error_code |= FLAGS_ERROR_INVALID_NAME;
+  //   return NULL;
+  // }
 
   flags_item* addr = NULL;
   size_t index = __flags_hash(name) & (flags->capacity - 1);
@@ -203,43 +271,6 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   flags->count += 1;
 
   return &addr->value;
-}
-
-static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
-  if (list->count >= list->capacity) {
-    list->capacity = list->capacity*2;
-    if (list->capacity == 0)
-      list->capacity = __flags_initial_string_list_capacity;
-    list->content  = realloc(list->content, list->capacity * sizeof(char**));
-  }
-
-  list->content[list->count] = value;
-  list->count += 1;
-}
-
-// Append an error onto the flag context's error list
-static int __flags_append_err(flags_context* flags, const char* restrict format, ...) {
-    va_list args, args_copy;
-    va_start(args, format);
-    va_copy(args_copy, args);
-
-    int needed = vsnprintf(NULL, 0, format, args);
-    char* buffer = malloc(needed + 1);
-
-    if (buffer == NULL) {
-        va_end(args);
-        va_end(args_copy);
-        return -1;
-    }
-
-    vsprintf(buffer, format, args_copy);
-
-    va_end(args_copy);
-    va_end(args);
-
-    __flags_string_list_append(&flags->error_list, buffer);
-
-    return needed;
 }
 
 static void __flags_parse_and_assign_number(flags_context* flags, flags_item* item, const char* value, intmax_t min, intmax_t max) {
@@ -372,6 +403,8 @@ static inline void __flags_update(flags_context* flags, flags_item* flag, char* 
 int flags_init(flags_context* flags) {
   *flags = (flags_context){
     .items                = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
+    // TODO: We can make this alot smaller now that we have limited the allowed
+    // characters used within a name
     // NOTE: Might consider doing this with a dynamic array instead of
     // allocating the maximum possible amount of items instantly.
     .short_to_long_map    = calloc(CHAR_MAX+1, sizeof(flags_item*)),

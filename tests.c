@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdint.h>
 #include <string.h>
 #define TEST_IMPLEMENTATION
@@ -16,9 +17,7 @@ void passing(void) {
   printf("This should not be shown\n");
 }
 
-void flags_parse_with_output(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
-  flags_parse(flags, args, argc, argv);
-
+void flags_print_error_output(flags_context* flags) {
   if (flags->error_code != 0) {
     fprintf(stderr, "Flag parse error:\n");
     for (size_t i = 0; i < flags->error_list.count; i += 1) {
@@ -29,7 +28,7 @@ void flags_parse_with_output(flags_context* flags, flags_string_list* args, cons
 
 void bool_flags(void) {
   const size_t argc = 7;
-  const char* args[] = { "program", "--enable-feature", "--other=false", "--other2=0", "--tother=true", "--tother2=1", "-sd" };
+  const char* argv[] = { "program", "--enable-feature", "--other=false", "--other2=0", "--tother=true", "--tother2=1", "-sd" };
 
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -42,7 +41,8 @@ void bool_flags(void) {
   bool* s       = flags_bool(&flags, "some-other-feature", 's', false, "");
   bool* d       = flags_bool(&flags, "dome-other-feature", 'd', false, "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)args);
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
 
   assert(flags.error_code == 0);
 
@@ -68,7 +68,8 @@ void integer_flags(void) {
   int32_t* i32 = flags_i32(&flags, "i32", '\0', 0, "");
   int64_t* i64 = flags_i64(&flags, "i64", '\0', 0, "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
 
   assert(flags.error_code == 0);
 
@@ -91,7 +92,8 @@ void unsigned_integer_flags(void) {
   uint8_t* u8 = flags_u8(&flags, "u8", '\0', 0, "");
   uint32_t* u32 = flags_u32(&flags, "u32", '\0', 0, "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
 
   assert(flags.error_code == 0);
 
@@ -113,7 +115,8 @@ void string_flags(void) {
   char** strs = flags_str(&flags, "strs", 's', "", "");
   char** strd = flags_str(&flags, "strd", 'd', "", "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
 
   assert(flags.error_code == 0);
 
@@ -134,7 +137,8 @@ void multi_string_flags(void) {
 
   flags_string_list* strings = flags_multi_str(&flags, "strings", 's', "");
 
-  flags_parse_with_output(&flags, NULL, argc, (char**)argv);
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
 
   assert(flags.error_code == 0);
 
@@ -142,6 +146,24 @@ void multi_string_flags(void) {
   assert(strcmp(strings->content[1], "world") == 0);
   assert(strcmp(strings->content[2], "again") == 0);
   assert(strcmp(strings->content[3], "there") == 0);
+
+  flags_deinit(&flags);
+}
+
+void flag_name_validation(void) {
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  char** one = flags_str(&flags, "strings", 's', "", "");
+
+  flags_print_error_output(&flags);
+  assert(flags.error_code == 0);
+  assert(one != NULL);
+
+  char** two = flags_str(&flags, "78", 's', "", "");
+
+  assert(flags.error_code &= FLAGS_ERROR_INVALID_NAME);
+  assert(two == NULL);
 
   flags_deinit(&flags);
 }
@@ -179,6 +201,7 @@ int main(int argc, char* argv[]) {
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
   test_register(&context, "string_flags", &string_flags, false);
   test_register(&context, "multi_string_flags", &multi_string_flags, false);
+  test_register(&context, "flag_name_validation", &flag_name_validation, false);
 
 
   for (size_t i = 0; i < skip->count; i += 1) {
