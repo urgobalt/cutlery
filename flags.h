@@ -406,6 +406,12 @@ inline void flags_deinit(flags_context* flags) {
 
   free(flags->items);
   free(flags->short_to_long_map);
+
+  for (size_t i = 0; i < flags->error_list.count; i++) {
+    free(flags->error_list.content[i]);
+  }
+
+  free(flags->error_list.content);
 }
 
 char* flags_usage(flags_context* flags) {
