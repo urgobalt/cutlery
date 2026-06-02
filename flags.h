@@ -46,6 +46,7 @@ typedef struct flags_item {
   const char* type_hint;
   enum flags_type type;
   unsigned char short_name;
+  bool is_assigned;
 } flags_item;
 
 typedef struct flags_context {
@@ -68,7 +69,7 @@ inline int flags_init(flags_context* flags);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_context* flags);
 
-char* flags_usage(flags_context* flags);
+char* flags_print_usage(flags_context* flags);
 
 // The function assumes that `flags_init` has been executed before parsing.
 // `argv` is copied into an internal structure to avoid writeability problems
@@ -80,6 +81,10 @@ char* flags_usage(flags_context* flags);
 //
 // Please refer to the tests for example usage.
 void flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv);
+
+// Check whether a flag was used by the user. This is the preferred way of
+// implementing a required flag since it also enables more complex logic.
+bool flags_used(flags_context* flags, const char* name);
 
 // Define a numeric flag of with the size of 1 byte / int8_t with default value
 int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help);
@@ -102,27 +107,6 @@ uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char short_
 // Define a string flag with default value
 char** flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help);
 
-// Define a numeric flag of with the size of 1 byte / int8_t
-int8_t * flags_required_i8 (flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 2 bytes / int16_t
-int16_t* flags_required_i16(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 4 bytes / int32_t
-int32_t* flags_required_i32(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 8 bytes / int64_t
-int64_t* flags_required_i64(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-
-// Define a numeric flag of with the size of 1 byte / uint8_t
-uint8_t * flags_required_u8 (flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 2 bytes / uint16_t
-uint16_t* flags_required_u16(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 4 bytes / uint32_t
-uint32_t* flags_required_u32(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-// Define a numeric flag of with the size of 8 bytes / uint64_t
-uint64_t* flags_required_u64(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-
-// Define a string flag
-char** flags_required_str(flags_context* flags, const char* name, unsigned char short_name, const char* help);
-
 // Define a boolean flag with default value
 bool* flags_bool(flags_context* flags, const char* name, unsigned char short_name, bool value, const char* help);
 
@@ -137,7 +121,6 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <ctype.h>
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -250,22 +233,24 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     if (flags->items[index].type == FLAGS_EMPTY) {
-      flags->items[index] = (flags_item) {
-        .value = value,
-        .name = name,
-        .short_name = short_name,
-        .help = help,
-        .type = type,
-        .type_hint = type_hint,
-      };
       addr = &flags->items[index];
       break;
     }
+
     index = (index+1) & (flags->capacity - 1);
   }
 
   if (addr == NULL)
     return NULL;
+
+  *addr = (flags_item) {
+    .value = value,
+    .name = name,
+    .short_name = short_name,
+    .help = help,
+    .type = type,
+    .type_hint = type_hint,
+  };
 
   flags->short_to_long_map[short_name] = addr;
   flags->count += 1;
@@ -324,13 +309,14 @@ static int __flags_parse_bool(const char* value) {
   return -1;
 }
 
+// TODO: Consolidate this with the __flags_get_addr_from_item
 static flags_item* __flags_get_item(flags_context* flags, const char* name) {
   size_t index = __flags_hash(name) & (flags->capacity - 1);
   for (size_t i = 0; i < flags->capacity; i += 1) {
     flags_item* item = &flags->items[index];
 
     if (item->type == FLAGS_EMPTY) {
-      goto flags_unknown;
+      return NULL;
     }
 
     if (strcmp(item->name, name) == 0) {
@@ -340,9 +326,6 @@ static flags_item* __flags_get_item(flags_context* flags, const char* name) {
     index = (index+1) & (flags->capacity - 1);
   }
 
-flags_unknown:
-  __flags_append_err(flags, "Unknown flag. Found: --%s", name);
-  flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
   return NULL;
 }
 
@@ -350,8 +333,6 @@ static flags_item* __flags_get_item_from_short(flags_context* flags, const char 
   flags_item* item = flags->short_to_long_map[(int)short_name];
 
   if (item->type == FLAGS_EMPTY) {
-    __flags_append_err(flags, "Unknown flag. Found: -%c", short_name);
-    flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
     return NULL;
   }
 
@@ -447,7 +428,7 @@ inline void flags_deinit(flags_context* flags) {
   free(flags->error_list.content);
 }
 
-char* flags_usage(flags_context* flags) {
+char* flags_print_usage(flags_context* flags) {
   (void)flags;
   // TODO: Implement usage printing for the flags
   abort();
@@ -499,10 +480,16 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
           character_index += 1;
         }
 
-        flag = __flags_get_item(flags, raw_flag_string+2);
+        const char* name = raw_flag_string+2;
+        flag = __flags_get_item(flags, name);
 
-        if (flag == NULL)
+        if (flag == NULL) {
+          __flags_append_err(flags, "Unknown flag. Found: --%s", name);
+          flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
           continue;
+        }
+
+        flag->is_assigned = true;
 
         if (flag->type == FLAGS_BOOL) {
           if (value == NULL) {
@@ -532,8 +519,13 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
 
           flag = __flags_get_item_from_short(flags, raw_flag_string[character_index]);
 
-          if (flag == NULL)
+          if (flag == NULL) {
+            __flags_append_err(flags, "Unknown flag. Found: -%c", raw_flag_string[character_index]);
+            flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
             continue;
+          }
+
+          flag->is_assigned = true;
 
           if (flag->type == FLAGS_BOOL)
             flag->value = (void*)(uintptr_t)true;
@@ -567,6 +559,16 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
       __flags_string_list_append(args, flags->argv[argument_index]);
     }
   }
+}
+
+bool flags_used(flags_context *flags, const char *name) {
+  flags_item* addr = __flags_get_item(flags, name);
+  if (addr == NULL) {
+    __flags_append_err(flags, "Flag with name '%s' is not defined", name);
+    flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
+    return false;
+  }
+  return addr->is_assigned;
 }
 
 inline int8_t * flags_i8 (flags_context* flags, const char* name, unsigned char short_name, int8_t  value, const char* help) {
@@ -604,8 +606,6 @@ inline uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char
 inline char** flags_str(flags_context* flags, const char* name, unsigned char short_name, char* value, const char* help) {
   return __flags_insert(flags, name, short_name, (void*)value, FLAGS_STR, "string", help);
 }
-
-// TODO: Implmentation of required functionality
 
 inline bool* flags_bool(flags_context* flags, const char* name, unsigned char short_name, bool value, const char* help) {
   return __flags_insert(flags, name, short_name, (void*)(uintptr_t)value, FLAGS_BOOL, "boolean", help);

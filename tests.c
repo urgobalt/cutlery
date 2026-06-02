@@ -168,6 +168,28 @@ void flag_name_validation(void) {
   flags_deinit(&flags);
 }
 
+void used_check(void) {
+  const size_t argc = 3;
+  const char* argv[] = {"program", "--string", "hello"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  char** string = flags_str(&flags, "string", 's', "", "");
+  char** string_unused = flags_str(&flags, "string-unused", 'u', "", "");
+
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
+  assert(flags.error_code == 0);
+  assert(string != NULL);
+  assert(string_unused != NULL);
+
+  assert(flags_used(&flags, "string") == true);
+  assert(flags_used(&flags, "string-unused") == false);
+
+  flags_deinit(&flags);
+}
+
 int main(int argc, char* argv[]) {
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -181,7 +203,7 @@ int main(int argc, char* argv[]) {
     for (size_t i = 0; i < flags.error_list.count; i += 1) {
       printf("%s\n", flags.error_list.content[i]);
     }
-    printf("\n%s", flags_usage(&flags));
+    printf("\n%s", flags_print_usage(&flags));
   }
 
   test_context context = test_init();
@@ -202,7 +224,7 @@ int main(int argc, char* argv[]) {
   test_register(&context, "string_flags", &string_flags, false);
   test_register(&context, "multi_string_flags", &multi_string_flags, false);
   test_register(&context, "flag_name_validation", &flag_name_validation, false);
-
+  test_register(&context, "used_check", &used_check, false);
 
   for (size_t i = 0; i < skip->count; i += 1) {
     test_skip(&context, skip->content[i]);
