@@ -84,6 +84,9 @@ void test_run(test_context *context) {
   int *stdouts = malloc(context->count * sizeof(int));
   int *stderrs = malloc(context->count * sizeof(int));
 
+  assert(stdouts != NULL);
+  assert(stderrs != NULL);
+
   int res = mkdir("/tmp/cutlerytest", 0777);
   assert(res == 0 || errno == EEXIST);
 

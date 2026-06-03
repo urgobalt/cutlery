@@ -469,18 +469,14 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
       flags_item* flag = NULL;
 
       if (raw_flag_string[1] == flag_marker) {
-        size_t character_index = 2;
+        const char* name = raw_flag_string+2;
 
-        while (raw_flag_string[character_index] != '\0') {
-          if (raw_flag_string[character_index] == '=') {
-            raw_flag_string[character_index] = '\0';
-            value = &raw_flag_string[character_index+1];
-            break;
-          }
-          character_index += 1;
+        value = strchr(name, '=');
+        if (value != NULL) {
+          *value = '\0';
+          value += 1;
         }
 
-        const char* name = raw_flag_string+2;
         flag = __flags_get_item(flags, name);
 
         if (flag == NULL) {
@@ -533,6 +529,9 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
           character_index += 1;
         }
 
+        if (flag == NULL)
+          continue;
+
         if (flag->type == FLAGS_BOOL)
           continue;
       }
@@ -562,7 +561,7 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
 }
 
 bool flags_used(flags_context *flags, const char *name) {
-  flags_item* addr = __flags_get_item(flags, name);
+  const flags_item* addr = __flags_get_item(flags, name);
   if (addr == NULL) {
     __flags_append_err(flags, "Flag with name '%s' is not defined", name);
     flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
