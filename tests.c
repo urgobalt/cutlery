@@ -214,16 +214,24 @@ int main(int argc, char* argv[]) {
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
 
+  bool* help = flags_bool(&flags, "help", 'h', false, "Print this help message");
   flags_string_list* skip = flags_multi_str(&flags, "skip", 's', "List of test names to skip");
   bool* meta_tests = flags_bool(&flags, "meta-tests", 'm', false, "Enable meta tests for the testing framework");
 
   flags_parse(&flags, NULL, argc, argv);
   if (flags.error_code != 0) {
-    printf("Flag parse error:\n");
     for (size_t i = 0; i < flags.error_list.count; i += 1) {
       printf("%s\n", flags.error_list.content[i]);
     }
-    printf("\n%s", flags_print_usage(&flags));
+    flags_fprint_usage(&flags, stdout);
+    flags_deinit(&flags);
+    return 1;
+  }
+
+  if (*help) {
+    flags_fprint_usage(&flags, stdout);
+    flags_deinit(&flags);
+    return 0;
   }
 
   test_context context = test_init();

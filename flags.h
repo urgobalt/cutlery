@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <stdio.h>
 
 enum flags_error {
   FLAGS_SUCCESS = 0,
@@ -51,7 +52,8 @@ typedef struct flags_item {
 
 typedef struct flags_context {
   // Content
-  flags_item* items;
+  flags_item*  items;
+  flags_item** items_by_registration_order;
   flags_item** short_to_long_map;
   size_t count;
   size_t capacity;
@@ -69,7 +71,10 @@ inline int flags_init(flags_context* flags);
 // Free all of the memory allocated by flags
 void flags_deinit(flags_context* flags);
 
-char* flags_print_usage(flags_context* flags);
+// Print a list of available flags with corresponding usage help message. List
+// of flags in the output has the same output order as the order they are
+// defined/registered.
+void flags_fprint_usage(flags_context* flags, FILE* stream);
 
 // The function assumes that `flags_init` has been executed before parsing.
 // `argv` is copied into an internal structure to avoid writeability problems
@@ -120,7 +125,6 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 
 #include <stdlib.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -251,6 +255,8 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
   };
 
   flags->short_to_long_map[short_name] = addr;
+  flags->items_by_registration_order[flags->count] = addr;
+
   flags->count += 1;
 
   return &addr->value;
@@ -383,14 +389,15 @@ static inline void __flags_update(flags_context* flags, flags_item* flag, char* 
 
 int flags_init(flags_context* flags) {
   *flags = (flags_context){
-    .items                = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
+    .items                       = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
+    .items_by_registration_order = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
     // TODO: We can make this alot smaller now that we have limited the allowed
     // characters used within a name
     // NOTE: Might consider doing this with a dynamic array instead of
     // allocating the maximum possible amount of items instantly.
-    .short_to_long_map    = calloc(CHAR_MAX+1, sizeof(flags_item*)),
-    .count                = 0,
-    .capacity             = __flags_initial_flags_capacity,
+    .short_to_long_map           = calloc(CHAR_MAX+1, sizeof(flags_item*)),
+    .count                       = 0,
+    .capacity                    = __flags_initial_flags_capacity,
 
     // Error handling
     .error_list           = {0},
@@ -416,6 +423,7 @@ inline void flags_deinit(flags_context* flags) {
   }
 
   free(flags->items);
+  free(flags->items_by_registration_order);
   free(flags->short_to_long_map);
 
   for (int i = 0; i < flags->argc; i += 1) {
@@ -430,10 +438,51 @@ inline void flags_deinit(flags_context* flags) {
   free(flags->error_list.content);
 }
 
-char* flags_print_usage(flags_context* flags) {
-  (void)flags;
-  // TODO: Implement usage printing for the flags
-  abort();
+void flags_fprint_usage(flags_context* flags, FILE* stream) {
+  size_t flag_max_width = 0;
+
+  if (flags->count == 0)
+    return;
+
+  for (size_t i = 0; i < flags->count; i++) {
+    flags_item* item = flags->items_by_registration_order[i];
+    if (item->type == FLAGS_EMPTY) {
+      __flags_append_err(flags, "%s:%zu: Internal library error, empty registered flag", __FILE__, __LINE__);
+      flags->error_code |= FLAGS_ERROR_LIBRARY_IMPLEMENTATION;
+      return;
+    }
+
+    size_t len = strlen(item->name) + 2; // "--name"
+    if (item->short_name != '\0')
+      len += 4; // ", -c"
+    if (len > flag_max_width)
+      flag_max_width = len;
+  }
+
+  size_t gap = 3; // This is an arbitrary space chosen for column separation
+  size_t help_column = flag_max_width + gap;
+
+  for (size_t i = 0; i < flags->count; i++) {
+    flags_item* item = flags->items_by_registration_order[i];
+
+    int help_len = 0;
+    if (item->short_name != '\0') {
+      help_len = fprintf(stream, "--%s, -%c", item->name, item->short_name);
+    } else {
+      help_len = fprintf(stream, "--%s", item->name);
+    }
+
+    help_len = help_column - help_len;
+    help_len = help_len < 0 ? 0 : help_len;
+
+    for (int i = 0; i < help_len; i++) {
+      fprintf(stream, "%c", ' ');
+    }
+
+    if (item->help) {
+      fprintf(stream, "%s\n", item->help);
+    }
+  }
 }
 
 void flags_parse(flags_context* flags, flags_string_list* args, const int argc, char* const* argv) {
