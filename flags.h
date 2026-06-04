@@ -157,19 +157,15 @@ static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
 }
 
 bool __flags_validate_character(const char character) {
-  char* special_characters = "-_+?";
-
-  while (*special_characters != '\0') {
-    if (*special_characters == character)
+  switch (character) {
+    case '-':
+    case '_':
+    case '+':
+    case '?':
       return true;
-
-    special_characters += 1;
+    default:
+      return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9');
   }
-
-  if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z'))
-    return true;
-
-  return false;
 }
 
 static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
@@ -177,7 +173,9 @@ static void __flags_string_list_append(flags_string_list* __restrict list, char*
     list->capacity = list->capacity*2;
     if (list->capacity == 0)
       list->capacity = __flags_initial_string_list_capacity;
-    list->content  = realloc(list->content, list->capacity * sizeof(char**));
+    list->content  = realloc(list->content, list->capacity * sizeof(char*));
+
+    // BUG: Handle realloc failing
   }
 
   list->content[list->count] = value;
@@ -214,7 +212,7 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
     __flags_realloc(flags, flags->capacity*2);
 
   for (size_t i = 0; name[i] != '\0'; i++) {
-    if (__flags_validate_character(*name) == false) {
+    if (__flags_validate_character(name[i]) == false) {
       __flags_append_err(flags, "Unexpected character '%c' in flag name '%s'", name[i], name);
       flags->error_code |= FLAGS_ERROR_INVALID_NAME;
       return NULL;
@@ -332,9 +330,11 @@ static flags_item* __flags_get_item(flags_context* flags, const char* name) {
 static flags_item* __flags_get_item_from_short(flags_context* flags, const char short_name) {
   flags_item* item = flags->short_to_long_map[(int)short_name];
 
-  if (item->type == FLAGS_EMPTY) {
+  if (item == NULL)
     return NULL;
-  }
+
+  if (item->type == FLAGS_EMPTY)
+    return NULL;
 
   return item;
 }
@@ -404,22 +404,24 @@ int flags_init(flags_context* flags) {
 
 inline void flags_deinit(flags_context* flags) {
   // Free all the allocated string lists
-  for (size_t i = 0; i < flags->capacity; i += 1) {
-    if (flags->items[i].type == FLAGS_MULTI_STR) {
-      flags_string_list* value = flags->items[i].value;
-      if (value->content != NULL)
-        free(value->content);
-      free(value);
+  if (flags->items != NULL) {
+    for (size_t i = 0; i < flags->capacity; i += 1) {
+      if (flags->items[i].type == FLAGS_MULTI_STR) {
+        flags_string_list* value = flags->items[i].value;
+        if (value->content != NULL)
+          free(value->content);
+        free(value);
+      }
     }
   }
+
+  free(flags->items);
+  free(flags->short_to_long_map);
 
   for (int i = 0; i < flags->argc; i += 1) {
     free(flags->argv[i]);
   }
   free(flags->argv);
-
-  free(flags->items);
-  free(flags->short_to_long_map);
 
   for (size_t i = 0; i < flags->error_list.count; i++) {
     free(flags->error_list.content[i]);
@@ -452,6 +454,9 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
 
     if (flags->argv[i] == NULL) {
       flags->error_code |= FLAGS_ERROR_ALLOCATION;
+      for (int fi = 0; fi < i; fi++)
+        free(flags->argv[fi]);
+      free(flags->argv);
       return;
     }
 
@@ -518,6 +523,7 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
           if (flag == NULL) {
             __flags_append_err(flags, "Unknown flag. Found: -%c", raw_flag_string[character_index]);
             flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
+            character_index += 1;
             continue;
           }
 
@@ -583,6 +589,7 @@ inline int32_t* flags_i32(flags_context* flags, const char* name, unsigned char 
 }
 
 inline int64_t* flags_i64(flags_context* flags, const char* name, unsigned char short_name, int64_t value, const char* help) {
+  // TODO: Handling this through void* on 32-bit systems will cause UB
   return __flags_insert(flags, name, short_name, (void*)value, FLAGS_i64, "number", help);
 }
 
@@ -599,6 +606,7 @@ inline uint32_t* flags_u32(flags_context* flags, const char* name, unsigned char
 }
 
 inline uint64_t* flags_u64(flags_context* flags, const char* name, unsigned char short_name, uint64_t value, const char* help) {
+  // TODO: Handling this through void* on 32-bit systems will cause UB
   return __flags_insert(flags, name, short_name, (void*)value, FLAGS_u64, "positive number", help);
 }
 
@@ -612,9 +620,17 @@ inline bool* flags_bool(flags_context* flags, const char* name, unsigned char sh
 
 flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsigned char short_name, const char* help) {
   flags_string_list* list = malloc(sizeof(flags_string_list));
-  if (list == NULL) return NULL;
+  if (list == NULL)
+    return NULL;
+
   *list = (flags_string_list){0};
-  return *((flags_string_list**)__flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, "list of strings", help));
+  flags_string_list** list_double_ptr = __flags_insert(flags, name, short_name, list, FLAGS_MULTI_STR, "list of strings", help);
+  if (list_double_ptr == NULL) {
+    free(list);
+    return NULL;
+  }
+
+  return *list_double_ptr;
 }
 
 #endif // FLAGS_IMPLEMENTATION

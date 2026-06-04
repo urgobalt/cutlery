@@ -150,20 +150,40 @@ void multi_string_flags(void) {
   flags_deinit(&flags);
 }
 
+void empty_short_flag(void) {
+  const size_t argc = 2;
+  const char* argv[] = {"program", "-"};
+
+  flags_context flags = {0};
+  assert(flags_init(&flags) == 0);
+
+  flags_parse(&flags, NULL, argc, (char**)argv);
+  flags_print_error_output(&flags);
+
+  assert(flags.error_code == 0);
+
+  flags_deinit(&flags);
+}
+
 void flag_name_validation(void) {
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
 
-  char** one = flags_str(&flags, "strings", 's', "", "");
+  (void)flags_str(&flags, "strings", 's', "", "");
+  (void)flags_str(&flags, "78", 's', "", "");
+  (void)flags_str(&flags, "f8", 's', "", "");
+  (void)flags_str(&flags, "hello_there", 's', "", "");
+  (void)flags_str(&flags, "hello-there", 's', "", "");
+  assert(flags.error_code == 0);
 
   flags_print_error_output(&flags);
-  assert(flags.error_code == 0);
-  assert(one != NULL);
 
-  char** two = flags_str(&flags, "78", 's', "", "");
-
+  (void)flags_str(&flags, "&", 's', "", "");
   assert(flags.error_code &= FLAGS_ERROR_INVALID_NAME);
-  assert(two == NULL);
+  (void)flags_str(&flags, "=", 's', "", "");
+  assert(flags.error_code &= FLAGS_ERROR_INVALID_NAME);
+  (void)flags_str(&flags, ",", 's', "", "");
+  assert(flags.error_code &= FLAGS_ERROR_INVALID_NAME);
 
   flags_deinit(&flags);
 }
@@ -223,6 +243,7 @@ int main(int argc, char* argv[]) {
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
   test_register(&context, "string_flags", &string_flags, false);
   test_register(&context, "multi_string_flags", &multi_string_flags, false);
+  test_register(&context, "empty_short_flag", &empty_short_flag, false);
   test_register(&context, "flag_name_validation", &flag_name_validation, false);
   test_register(&context, "used_check", &used_check, false);
 
