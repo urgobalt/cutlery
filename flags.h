@@ -465,16 +465,30 @@ void flags_parse(flags_context* flags, flags_string_list* args, const int argc, 
 
   const unsigned char flag_marker = '-';
 
+  // Interpret the rest as arguments when encountering "--"
+  bool fallthrough = false;
+
   for (int argument_index = 0; argument_index < argc; argument_index += 1) {
 
     char* raw_flag_string = flags->argv[argument_index];
 
-    if (raw_flag_string[0] == flag_marker) {
+    if (!fallthrough && raw_flag_string[0] == flag_marker) {
       char* value = NULL;
       flags_item* flag = NULL;
 
+      if (raw_flag_string[1] == '\0') {
+        __flags_append_err(flags, "Unknown flag. Found: -");
+        flags->error_code |= FLAGS_ERROR_UNKNOWN_FLAG;
+        continue;
+      }
+
       if (raw_flag_string[1] == flag_marker) {
         const char* name = raw_flag_string+2;
+
+        if (*name == '\0') {
+          fallthrough = true;
+          continue;
+        }
 
         value = strchr(name, '=');
         if (value != NULL) {

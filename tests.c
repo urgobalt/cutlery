@@ -160,7 +160,7 @@ void empty_short_flag(void) {
   flags_parse(&flags, NULL, argc, (char**)argv);
   flags_print_error_output(&flags);
 
-  assert(flags.error_code == 0);
+  assert(flags.error_code & FLAGS_ERROR_UNKNOWN_FLAG);
 
   flags_deinit(&flags);
 }
