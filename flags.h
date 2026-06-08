@@ -133,9 +133,17 @@ flags_string_list* flags_multi_str(flags_context* flags, const char* name, unsig
 
 // WARN: This capacity need to be a base of 2 in order to perform optimized
 // modulus operation
-const size_t __flags_initial_flags_capacity = 128;
-const size_t __flags_initial_string_list_capacity = 32;
-const size_t __flags_error_msg_max_len = 160; // Double the size of a normal terminal
+#ifndef FLAGS_INITIAL_FLAGS_CAPACITY
+#define FLAGS_INITIAL_FLAGS_CAPACITY 32
+#endif // FLAGS_INITIAL_FLAGS_CAPACITY
+
+#ifndef FLAGS_INTIIAL_STRING_LIST_CAPACITY
+#define FLAGS_INTIIAL_STRING_LIST_CAPACITY 32
+#endif // FLAGS_INTIIAL_STRING_LIST_CAPACITY
+
+#ifndef FLAGS_ERROR_MESSAGE_MAX_LENGTH
+#define FLAGS_ERROR_MESSAGE_MAX_LENGTH 160
+#endif // FLAGS_ERROR_MESSAGE_MAX_LENGTH
 
 // START OF PRIVATE FUNCTIONS
 
@@ -154,29 +162,11 @@ static inline size_t __flags_hash(const char* __restrict key) {
   return accumulator;
 }
 
-static void __flags_realloc(flags_context* __restrict flags, size_t capacity) {
-  (void)flags; (void) capacity;
-  // TODO: Implement realloc of the flags context
-  abort(); // Please change the initial_capacity, by default you should never be able to reach that amount of flags in a program
-}
-
-bool __flags_validate_character(const char character) {
-  switch (character) {
-    case '-':
-    case '_':
-    case '+':
-    case '?':
-      return true;
-    default:
-      return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9');
-  }
-}
-
 static void __flags_string_list_append(flags_string_list* __restrict list, char* __restrict value) {
   if (list->count >= list->capacity) {
     list->capacity = list->capacity*2;
     if (list->capacity == 0)
-      list->capacity = __flags_initial_string_list_capacity;
+      list->capacity = FLAGS_INTIIAL_STRING_LIST_CAPACITY;
     list->content  = realloc(list->content, list->capacity * sizeof(char*));
 
     // BUG: Handle realloc failing
@@ -211,9 +201,86 @@ static int __flags_append_err(flags_context* flags, const char* __restrict forma
     return needed;
 }
 
+// BUG: Reallocating flags frees memory that holds the value reference that
+// should be updated. Meaning that the hashmap needs to hold pointers to the
+// value rather than the actual value.
+// TODO: We can implement a value-list on the side of the hashmap which it is
+// pointing to. Meaning the hashmap holds internal state and the external state
+// is an immovable part of the program.
+static int __flags_realloc(flags_context* __restrict flags, size_t capacity) {
+  flags_item* new_items = calloc(capacity, sizeof(flags_item));
+  if (new_items == NULL) {
+    __flags_append_err(flags, "%s:%zu: Failed to allocate %zu bytes", __FILE__, __LINE__, capacity * sizeof(flags_item));
+    flags->error_code |= FLAGS_ERROR_ALLOCATION;
+    return -1;
+  }
+
+  flags_item** new_order = realloc(flags->items_by_registration_order, capacity * sizeof(flags_item*));
+  if (new_order == NULL) {
+    __flags_append_err(flags, "%s:%zu: Failed to allocate %zu bytes", __FILE__, __LINE__, capacity * sizeof(flags_item*));
+    flags->error_code |= FLAGS_ERROR_ALLOCATION;
+    free(new_items);
+    return -1;
+  }
+
+  flags->items_by_registration_order = new_order;
+
+  const size_t old_capacity = flags->capacity;
+  flags->capacity = capacity;
+
+  flags_item* old_items = flags->items;
+  flags->items = new_items;
+
+  for (size_t i = 0; i < flags->count; i += 1) {
+    flags_item* old_addr = flags->items_by_registration_order[i];
+    flags_item* new_addr = NULL;
+
+    size_t index = __flags_hash(old_addr->name) & (flags->capacity - 1);
+    for (size_t probe = 0; probe < flags->capacity; probe += 1) {
+      if (flags->items[index].type == FLAGS_EMPTY) {
+        new_addr = &flags->items[index];
+        break;
+      }
+      index = (index + 1) & (flags->capacity - 1);
+    }
+
+    if (new_addr == NULL) {
+      __flags_append_err(flags, "%s:%zu: Internal library error, failed to find free slot while rehashing flag '%s'", __FILE__, __LINE__, old_addr->name);
+      flags->error_code |= FLAGS_ERROR_LIBRARY_IMPLEMENTATION;
+
+      flags->items = old_items;
+      flags->capacity = old_capacity;
+      free(new_items);
+      return -1;
+    }
+
+    *new_addr = *old_addr;
+
+    flags->items_by_registration_order[i] = new_addr;
+    flags->short_to_long_map[new_addr->short_name] = new_addr;
+  }
+
+  free(old_items);
+  return 0;
+}
+
+bool __flags_validate_character(const char character) {
+  switch (character) {
+    case '-':
+    case '_':
+    case '+':
+    case '?':
+      return true;
+    default:
+      return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9');
+  }
+}
+
 void* __flags_insert(flags_context* flags, const char* name, const unsigned char short_name, void* __restrict value, enum flags_type type, const char* type_hint, const char* help) {
-  if (flags->count >= flags->capacity)
-    __flags_realloc(flags, flags->capacity*2);
+  if (flags->count >= flags->capacity) {
+    if (__flags_realloc(flags, flags->capacity*2) != 0)
+      return NULL;
+  }
 
   for (size_t i = 0; name[i] != '\0'; i++) {
     if (__flags_validate_character(name[i]) == false) {
@@ -233,7 +300,7 @@ void* __flags_insert(flags_context* flags, const char* name, const unsigned char
 
   flags_item* addr = NULL;
   size_t index = __flags_hash(name) & (flags->capacity - 1);
-  for (size_t i = 0; i < flags->capacity; i += 1) {
+  for (size_t probe = 0; probe < flags->capacity; probe += 1) {
     if (flags->items[index].type == FLAGS_EMPTY) {
       addr = &flags->items[index];
       break;
@@ -389,15 +456,15 @@ static inline void __flags_update(flags_context* flags, flags_item* flag, char* 
 
 int flags_init(flags_context* flags) {
   *flags = (flags_context){
-    .items                       = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
-    .items_by_registration_order = calloc(__flags_initial_flags_capacity, sizeof(flags_item)),
+    .items                       = calloc(FLAGS_INITIAL_FLAGS_CAPACITY, sizeof(flags_item)),
+    .items_by_registration_order = calloc(FLAGS_INITIAL_FLAGS_CAPACITY, sizeof(flags_item)),
     // TODO: We can make this alot smaller now that we have limited the allowed
     // characters used within a name
     // NOTE: Might consider doing this with a dynamic array instead of
     // allocating the maximum possible amount of items instantly.
     .short_to_long_map           = calloc(CHAR_MAX+1, sizeof(flags_item*)),
     .count                       = 0,
-    .capacity                    = __flags_initial_flags_capacity,
+    .capacity                    = FLAGS_INITIAL_FLAGS_CAPACITY,
 
     // Error handling
     .error_list           = {0},
