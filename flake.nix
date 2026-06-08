@@ -18,6 +18,7 @@
             gcc
             cppcheck
             clang-tools
+            ccache
           ];
           shellHook = ''
           '';
