@@ -3,9 +3,11 @@
 #include <string.h>
 #define TEST_IMPLEMENTATION
 #define FLAGS_IMPLEMENTATION
+#define ARENA_IMPLEMENTATION
 
 #include "test.h"
 #include "flags.h"
+#include "arena.h"
 
 void failing(void) {
   printf("This should be shown in stdout\n");
@@ -210,6 +212,26 @@ void used_check(void) {
   flags_deinit(&flags);
 }
 
+void arena_alloc_basic(void) {
+  arena_allocator allocator = {0};
+
+  const char* my_str = "hello, world";
+  char* my_allocated_str = arena_alloc(&allocator, strlen(my_str));
+  assert(my_allocated_str != NULL);
+
+  strcpy(my_allocated_str, my_str);
+
+  assert(strcmp(my_allocated_str, my_str) == 0);
+
+  arena_clear(&allocator);
+
+  char* my_newly_allocated_str = arena_alloc(&allocator, strlen(my_str));
+  assert(my_newly_allocated_str != NULL);
+  assert(strcmp(my_newly_allocated_str, my_str) == 0);
+
+  arena_free(&allocator);
+}
+
 int main(int argc, char* argv[]) {
   flags_context flags = {0};
   assert(flags_init(&flags) == 0);
@@ -239,21 +261,24 @@ int main(int argc, char* argv[]) {
   // meta tests for testing framework
   if (*meta_tests) {
     test_register(&context, "expect_failing", &failing, true);
-    test_register(&context, "failing", &failing, false);
-    test_register(&context, "passing", &passing, false);
+    test_register(&context, "failing",        &failing, false);
+    test_register(&context, "passing",        &passing, false);
 
     test_skip(&context, "failing");
   }
 
   // tests for flags library
-  test_register(&context, "bool_flags", &bool_flags, false);
-  test_register(&context, "integer_flags", &integer_flags, false);
+  test_register(&context, "bool_flags",             &bool_flags,             false);
+  test_register(&context, "integer_flags",          &integer_flags,          false);
   test_register(&context, "unsigned_integer_flags", &unsigned_integer_flags, false);
-  test_register(&context, "string_flags", &string_flags, false);
-  test_register(&context, "multi_string_flags", &multi_string_flags, false);
-  test_register(&context, "empty_short_flag", &empty_short_flag, false);
-  test_register(&context, "flag_name_validation", &flag_name_validation, false);
-  test_register(&context, "used_check", &used_check, false);
+  test_register(&context, "string_flags",           &string_flags,           false);
+  test_register(&context, "multi_string_flags",     &multi_string_flags,     false);
+  test_register(&context, "empty_short_flag",       &empty_short_flag,       false);
+  test_register(&context, "flag_name_validation",   &flag_name_validation,   false);
+  test_register(&context, "used_check",             &used_check,             false);
+
+  // tests for arena library
+  test_register(&context, "arena_alloc_basic",      &arena_alloc_basic,      false);
 
   for (size_t i = 0; i < skip->count; i += 1) {
     test_skip(&context, skip->content[i]);

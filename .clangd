@@ -8,6 +8,7 @@ CompileFlags:
     -pedantic-errors,
     -DTEST_IMPLEMENTATION,
     -DFLAGS_IMPLEMENTATION,
+    -DARENA_IMPLEMENTATION,
   ]
   Remove: [-x, objective-c++, -stdlib=libc++]
 
