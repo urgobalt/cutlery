@@ -9,6 +9,7 @@ CompileFlags:
     -DTEST_IMPLEMENTATION,
     -DFLAGS_IMPLEMENTATION,
     -DARENA_IMPLEMENTATION,
+    -DPRELUDE_IMPLEMENTATION,
   ]
   Remove: [-x, objective-c++, -stdlib=libc++]
 
