@@ -48,12 +48,12 @@ typedef ptrdiff_t isize;
 // --- string_view -------------------------------------------------------------
 
 typedef struct string_view {
-  u8* data;
+  const u8* data;
   usize len;
 } string_view;
 
 /// Compare two views for byte equality.
-bool sv_eq(string_view a, string_view b);
+bool sv_eq(const string_view a, const string_view b);
 
 /// True if `haystack` contains `needle` at its start.
 bool sv_starts_with(string_view haystack, string_view needle);
@@ -80,15 +80,6 @@ string_view sv_trim_right(string_view src);
 /// Trim ASCII whitespace from both sides.
 string_view sv_trim(string_view src);
 
-/// Parse a signed base-10 integer. Returns true on success.
-bool sv_parse_i64(string_view src, i64* out);
-
-/// Parse an unsigned base-10 integer. Returns true on success.
-bool sv_parse_u64(string_view src, u64* out);
-
-/// Print a string_view to a FILE*.
-void sv_fprint(FILE* stream, string_view src);
-
 #endif // PRELUDE_H
 
 #ifdef PRELUDE_IMPLEMENTATION
@@ -109,7 +100,6 @@ bool sv_contains(string_view haystack, string_view needle) {
   return sv_find(haystack, needle) != USIZE_MAX;
 }
 
-/// Returns USIZE_MAX if the value is not found
 usize sv_find(string_view haystack, string_view needle) {
   if (needle.len == 0)
     return 0;
@@ -155,58 +145,6 @@ string_view sv_trim_right(string_view src) {
 
 string_view sv_trim(string_view src) {
   return sv_trim_right(sv_trim_left(src));
-}
-
-bool sv_parse_i64(string_view src, i64* out) {
-  if (src.len == 0)
-    return false;
-
-  usize i        = 0;
-  bool  negative = false;
-  if (src.data[0] == '-') {
-    negative = true;
-    i        = 1;
-  } else if (src.data[0] == '+') {
-    i = 1;
-  }
-
-  if (i >= src.len)
-    return false;
-
-  i64 value = 0;
-  for (; i < src.len; i++) {
-    u8 c = src.data[i];
-    if (c < '0' || c > '9')
-      return false;
-    value = value * 10 + (c - '0');
-    if (value < 0)
-      return false; // overflow
-  }
-
-  *out = negative ? -value : value;
-  return true;
-}
-
-bool sv_parse_u64(string_view src, u64* out) {
-  if (src.len == 0)
-    return false;
-
-  u64 value = 0;
-  for (usize i = 0; i < src.len; i++) {
-    u8 c = src.data[i];
-    if (c < '0' || c > '9')
-      return false;
-    value = value * 10 + (u64)(c - '0');
-    if (value < (value - (u64)(c - '0')) / 10)
-      return false; // overflow check
-  }
-
-  *out = value;
-  return true;
-}
-
-void sv_fprint(FILE* stream, string_view src) {
-  fwrite(src.data, 1, src.len, stream);
 }
 
 #endif // PRELUDE_IMPLEMENTATION
