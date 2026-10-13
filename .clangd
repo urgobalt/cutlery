@@ -2,6 +2,9 @@ CompileFlags:
   Add: [
     -xc,
     -std=c99,
+    -Iinclude,
+    -Istblibs,
+    -Llibs,
     -Wall,
     -Wextra,
     -Wno-macro-redefined,
