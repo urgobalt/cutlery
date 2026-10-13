@@ -14,7 +14,7 @@ CompileFlags:
   Remove: [-x, objective-c++, -stdlib=libc++]
 
   BuiltinHeaders: QueryDriver
-  Compiler: gcc
+  Compiler: tcc
   CompilationDatabase: .
 
 Index:

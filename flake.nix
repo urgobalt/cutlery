@@ -15,10 +15,9 @@
         mkShell {
           packages = [
             just
-            gcc
+            tinycc
             cppcheck
             clang-tools
-            ccache
           ];
           shellHook = ''
           '';
