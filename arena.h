@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef ARENA_SIZE
 #define ARENA_SIZE 65536
 #endif // ARENA_SIZE

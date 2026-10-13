@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef PRELUDE_H
 #define PRELUDE_H
 

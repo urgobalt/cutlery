@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef FLAGS_H_
 #define FLAGS_H_
 
